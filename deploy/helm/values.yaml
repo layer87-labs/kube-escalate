@@ -118,6 +118,10 @@ networkPolicy:
   # CIDR of the API server.  Leave as 0.0.0.0/0 if unknown; tighten for
   # clusters where the API server address is fixed (e.g. private EKS endpoint).
   apiServerCIDR: "0.0.0.0/0"
+  # Additional egress rules for CNI plugins (e.g. Cilium with
+  # kube-proxy-replacement=true) that evaluate NetworkPolicy post-DNAT.
+  # Each entry: { port: <int>, cidr: "<CIDR>" }
+  additionalEgress: []
 
 # -- Node selector for the operator Pod.
 nodeSelector: {}
