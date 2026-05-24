@@ -14,6 +14,6 @@
 #   make image/build
 
 FROM cgr.dev/chainguard/static:latest
-COPY operator /operator
+COPY --chmod=755 operator /operator
 USER 65532:65532
 ENTRYPOINT ["/operator"]
