@@ -11,7 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/tools/record"
+	kevents "k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -53,11 +53,11 @@ const (
 // kube-escalate/managed=true and enforces their TTL.
 type EscalationReconciler struct {
 	client   client.Client
-	recorder record.EventRecorder
+	recorder kevents.EventRecorder
 }
 
 // NewEscalationReconciler constructs a ready-to-use EscalationReconciler.
-func NewEscalationReconciler(c client.Client, r record.EventRecorder) *EscalationReconciler {
+func NewEscalationReconciler(c client.Client, r kevents.EventRecorder) *EscalationReconciler {
 	return &EscalationReconciler{client: c, recorder: r}
 }
 
@@ -127,7 +127,9 @@ func (r *EscalationReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			"role", crb.RoleRef.Name,
 			"expires_at", expiresAt.Format(time.RFC3339),
 		)
-		return ctrl.Result{Requeue: true}, nil
+		// Return empty Result — the Update above triggers a watch event that
+		// re-enqueues the CRB without needing an explicit Requeue.
+		return ctrl.Result{}, nil
 	}
 
 	// ── TTL elapsed: initiate deletion ──────────────────────────────────────
@@ -185,13 +187,13 @@ func (r *EscalationReconciler) handleFinalization(ctx context.Context, crb *rbac
 
 	if time.Now().UTC().After(expiresAt) {
 		logger.Info("finalizing expired escalation", "requester", requester, "role", role)
-		r.recorder.Eventf(crb, corev1.EventTypeWarning, EventReasonExpired,
-			"Escalation for %s to role %s has expired", requester, role)
+		r.recorder.Eventf(crb, nil, corev1.EventTypeWarning, EventReasonExpired,
+			"Expire", "Escalation for %s to role %s has expired", requester, role)
 		Metrics.RecordExpiry(requester, role, "cluster", duration)
 	} else {
 		logger.Info("finalizing manually revoked escalation", "requester", requester, "role", role)
-		r.recorder.Eventf(crb, corev1.EventTypeNormal, EventReasonRevoked,
-			"Escalation for %s to role %s was manually revoked", requester, role)
+		r.recorder.Eventf(crb, nil, corev1.EventTypeNormal, EventReasonRevoked,
+			"Revoke", "Escalation for %s to role %s was manually revoked", requester, role)
 		Metrics.RecordRevocation(requester, role, "cluster", duration)
 	}
 

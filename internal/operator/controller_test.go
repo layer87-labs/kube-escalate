@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	kevents "k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -30,11 +30,11 @@ func testScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-func newTestSetup(t *testing.T, objs ...client.Object) (*operator.EscalationReconciler, *record.FakeRecorder, client.Client) {
+func newTestSetup(t *testing.T, objs ...client.Object) (*operator.EscalationReconciler, *kevents.FakeRecorder, client.Client) {
 	t.Helper()
 	s := testScheme(t)
 	c := fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).Build()
-	recorder := record.NewFakeRecorder(32)
+	recorder := kevents.NewFakeRecorder(32)
 	r := operator.NewEscalationReconciler(c, recorder)
 	return r, recorder, c
 }
@@ -81,7 +81,7 @@ func getCRB(t *testing.T, c client.Client, name string) (*rbacv1.ClusterRoleBind
 
 // drainEvent reads one event from the recorder channel and returns it.
 // Fails the test if no event is available.
-func drainEvent(t *testing.T, recorder *record.FakeRecorder) string {
+func drainEvent(t *testing.T, recorder *kevents.FakeRecorder) string {
 	t.Helper()
 	select {
 	case event := <-recorder.Events:
@@ -105,7 +105,7 @@ func TestReconcile_ExpiredCRB_FullLifecycle(t *testing.T) {
 	// ── Cycle 1: first reconcile — finalizer added, requeued ─────────────────
 	result, err := reconciler.Reconcile(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, result.Requeue, "cycle 1: should requeue after adding finalizer")
+	assert.Equal(t, ctrl.Result{}, result, "cycle 1: informer re-enqueues after finalizer Update")
 
 	updated, exists := getCRB(t, c, crb.Name)
 	require.True(t, exists, "cycle 1: CRB should still exist")
@@ -143,7 +143,7 @@ func TestReconcile_ActiveCRB_RequeuesAfterFinalizerAdded(t *testing.T) {
 	// Cycle 1: add finalizer
 	result, err := reconciler.Reconcile(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, result.Requeue, "cycle 1: requeue after adding finalizer")
+	assert.Equal(t, ctrl.Result{}, result, "cycle 1: informer re-enqueues after finalizer Update")
 
 	// Cycle 2: active TTL → requeue with duration
 	result, err = reconciler.Reconcile(ctx, req)

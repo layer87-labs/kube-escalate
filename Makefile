@@ -160,6 +160,12 @@ $(ENVTEST): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install \
 		sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
+## hooks: install git hooks — run once after cloning
+.PHONY: hooks
+hooks:
+	git config core.hooksPath .githooks
+	@echo "Git hooks installed — make audit will run before every commit."
+
 # =============================================================================
 # CLEAN
 # =============================================================================

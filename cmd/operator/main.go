@@ -73,7 +73,7 @@ func main() {
 
 	if err := operator.NewEscalationReconciler(
 		mgr.GetClient(),
-		mgr.GetEventRecorderFor("kube-escalate"),
+		mgr.GetEventRecorder("kube-escalate"),
 	).SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to register escalation reconciler")
 		os.Exit(1)
