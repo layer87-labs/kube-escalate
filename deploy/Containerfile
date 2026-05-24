@@ -1,0 +1,19 @@
+# kube-escalate operator container image.
+#
+# The operator binary is built OUTSIDE this file — via the Makefile or the
+# GitHub Actions release workflow — and is passed in as the Docker build context.
+# There is intentionally no multi-stage build here; compilation is handled by
+# 'make build/operator' (or CI), which gives full control over build flags,
+# layer caching, and the cross-compilation matrix.
+#
+# Build the binary first:
+#   make build/operator                 # current platform
+#   make GOOS=linux GOARCH=amd64 build/operator   # explicit platform
+#
+# Then build the image:
+#   make image/build
+
+FROM cgr.dev/chainguard/static:latest
+COPY operator /operator
+USER 65532:65532
+ENTRYPOINT ["/operator"]

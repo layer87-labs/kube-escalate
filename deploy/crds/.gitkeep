@@ -1,0 +1,3 @@
+# Reserved for future CRD manifests (v2+).
+# kube-escalate v1 requires no CRDs — escalations are standard ClusterRoleBindings
+# annotated with kube-escalate/managed=true and kube-escalate/expires-at.

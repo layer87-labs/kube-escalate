@@ -1,0 +1,23 @@
+apiVersion: v2
+name: kube-escalate
+description: >
+  Kubernetes operator for Just-in-Time privilege escalation.
+  Grants temporary, time-limited cluster access with automatic expiry,
+  a full audit trail via Kubernetes Events, and Prometheus metrics —
+  no database, no external dependencies.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - rbac
+  - escalation
+  - security
+  - jit
+  - operator
+home: https://github.com/layer87-labs/kube-escalate
+sources:
+  - https://github.com/layer87-labs/kube-escalate
+maintainers:
+  - name: layer87-labs
+    url: https://github.com/layer87-labs

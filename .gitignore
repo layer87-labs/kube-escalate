@@ -1,0 +1,18 @@
+# Build output
+/build/
+/bin/
+
+# Go test and coverage artefacts
+*.out
+*.test
+coverage.html
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

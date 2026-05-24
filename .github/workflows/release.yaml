@@ -1,0 +1,261 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+
+permissions:
+  contents: write  # create GitHub release + upload assets
+  packages: write  # push to GHCR
+  id-token: write  # cosign keyless OIDC signing
+
+jobs:
+  # ── Phase 1: Create GitHub release via relctl ────────────────────────────────
+  create-release:
+    uses: layer87-labs/relctl-action/.github/workflows/create-release.yml@main
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Phase 2a: Build binaries, sign (cosign), SBOM (syft) ────────────────────
+  build:
+    name: Build & Sign (${{ matrix.binary }}/${{ matrix.suffix }})
+    runs-on: ubuntu-latest
+    needs: [create-release]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Operator — Linux only (deployed via the container image)
+          - {binary: operator,         goos: linux,   goarch: amd64, suffix: linux-amd64}
+          - {binary: operator,         goos: linux,   goarch: arm64, suffix: linux-arm64}
+          # kubectl plugin — all platforms used by developers
+          - {binary: kubectl-escalate, goos: linux,   goarch: amd64, suffix: linux-amd64}
+          - {binary: kubectl-escalate, goos: linux,   goarch: arm64, suffix: linux-arm64}
+          - {binary: kubectl-escalate, goos: darwin,  goarch: amd64, suffix: darwin-amd64}
+          - {binary: kubectl-escalate, goos: darwin,  goarch: arm64, suffix: darwin-arm64}
+          - {binary: kubectl-escalate, goos: windows, goarch: amd64, suffix: windows-amd64, ext: .exe}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        env:
+          BINARY:      ${{ matrix.binary }}
+          GOOS:        ${{ matrix.goos }}
+          GOARCH:      ${{ matrix.goarch }}
+          SUFFIX:      ${{ matrix.suffix }}
+          EXT:         ${{ matrix.ext }}
+          VERSION:     ${{ needs.create-release.outputs.version }}
+          COMMIT_HASH: ${{ needs.create-release.outputs.sha-short }}
+          BUILD_DATE:  ${{ github.event.head_commit.timestamp }}
+        run: make build/single
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign binary (keyless via OIDC)
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          BINARY="build/package/${{ matrix.binary }}_${VERSION}_${{ matrix.suffix }}${{ matrix.ext }}"
+          cosign sign-blob \
+            --yes \
+            --bundle "${BINARY}.bundle" \
+            "${BINARY}"
+
+      - name: Install syft (SBOM generator)
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate SBOM (SPDX)
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          BINARY="build/package/${{ matrix.binary }}_${VERSION}_${{ matrix.suffix }}${{ matrix.ext }}"
+          syft "${BINARY}" \
+            -o spdx-json \
+            --file "build/package/${{ matrix.binary }}_${VERSION}_${{ matrix.suffix }}.sbom.spdx.json"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.binary }}-${{ matrix.suffix }}
+          path: build/package/
+          retention-days: 1
+
+  # ── Phase 2b: Checksums ──────────────────────────────────────────────────────
+  checksums:
+    name: Generate Checksums
+    runs-on: ubuntu-latest
+    needs: [create-release, build]
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: "*-*"
+          path: dist/
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd dist
+          sha256sum * > sha256sum.txt
+          cat sha256sum.txt
+
+      - name: Upload checksum artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: checksums
+          path: dist/sha256sum.txt
+          retention-days: 1
+
+  # ── Phase 2c: Container image (operator only) ────────────────────────────────
+  #
+  # Each arch image is built from the pre-compiled binary produced above.
+  # No multi-stage build — deploy/Containerfile just COPYs the binary.
+  # A multi-arch manifest is assembled from the two per-arch images.
+  container-image:
+    name: Container Image
+    runs-on: ubuntu-latest
+    needs: [create-release, build]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download operator amd64 artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: operator-linux-amd64
+          path: dist-amd64/
+
+      - name: Download operator arm64 artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: operator-linux-arm64
+          path: dist-arm64/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push amd64 image
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          cp "dist-amd64/operator_${VERSION}_linux-amd64" dist-amd64/operator
+          docker buildx build \
+            --platform linux/amd64 \
+            -f deploy/Containerfile \
+            -t "ghcr.io/layer87-labs/kube-escalate:${VERSION}-amd64" \
+            -t "ghcr.io/layer87-labs/kube-escalate:latest-amd64" \
+            --push \
+            dist-amd64/
+
+      - name: Build and push arm64 image
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          cp "dist-arm64/operator_${VERSION}_linux-arm64" dist-arm64/operator
+          docker buildx build \
+            --platform linux/arm64 \
+            -f deploy/Containerfile \
+            -t "ghcr.io/layer87-labs/kube-escalate:${VERSION}-arm64" \
+            -t "ghcr.io/layer87-labs/kube-escalate:latest-arm64" \
+            --push \
+            dist-arm64/
+
+      - name: Create and push multi-arch manifest
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          docker buildx imagetools create \
+            --tag "ghcr.io/layer87-labs/kube-escalate:${VERSION}" \
+            "ghcr.io/layer87-labs/kube-escalate:${VERSION}-amd64" \
+            "ghcr.io/layer87-labs/kube-escalate:${VERSION}-arm64"
+          docker buildx imagetools create \
+            --tag "ghcr.io/layer87-labs/kube-escalate:latest" \
+            "ghcr.io/layer87-labs/kube-escalate:latest-amd64" \
+            "ghcr.io/layer87-labs/kube-escalate:latest-arm64"
+
+  # ── Phase 2d: Helm chart ─────────────────────────────────────────────────────
+  helm-publish:
+    name: Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs: [create-release]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR (Helm)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io \
+              --username "${{ github.actor }}" \
+              --password-stdin
+
+      - name: Package and push chart
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          helm package deploy/helm/ \
+            --version "${VERSION}" \
+            --app-version "${VERSION}"
+          helm push "kube-escalate-${VERSION}.tgz" \
+            oci://ghcr.io/layer87-labs/charts
+
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: helm-chart
+          path: "kube-escalate-*.tgz"
+          retention-days: 1
+
+  # ── Phase 3: Publish all assets to the GitHub release ───────────────────────
+  publish-release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: [create-release, build, checksums, container-image, helm-publish]
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: "*"
+          path: dist/
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lh dist/
+
+      - name: Setup relctl
+        uses: layer87-labs/relctl-action@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish release assets
+        env:
+          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+          RELCTL_RELEASE_ID:  ${{ needs.create-release.outputs.release-id }}
+        run: |
+          ASSETS=()
+          while IFS= read -r f; do
+            ASSETS+=("--asset" "file=${f}")
+          done < <(find dist/ -type f | sort)
+          relctl release publish "${ASSETS[@]}"

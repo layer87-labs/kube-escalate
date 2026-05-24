@@ -1,0 +1,48 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kube-escalate.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-escalate.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "kube-escalate.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Kubelet → liveness / readiness probes.
+    - ports:
+        - port: 8081
+          protocol: TCP
+    {{- if .Values.metrics.enabled }}
+    # Prometheus → metrics scrape.
+    - ports:
+        - port: {{ .Values.metrics.port }}
+          protocol: TCP
+    {{- end }}
+
+  egress:
+    # DNS resolution (CoreDNS / kube-dns).
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # Kubernetes API server (watch CRBs/RBs, delete expired bindings,
+    # emit Events, update leader-election Lease).
+    - ports:
+        - port: {{ .Values.networkPolicy.apiServerPort }}
+          protocol: TCP
+      {{- if and .Values.networkPolicy.apiServerCIDR
+                 (ne .Values.networkPolicy.apiServerCIDR "0.0.0.0/0") }}
+      to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.apiServerCIDR }}
+      {{- end }}
+{{- end }}
