@@ -45,4 +45,18 @@ spec:
         - ipBlock:
             cidr: {{ .Values.networkPolicy.apiServerCIDR }}
       {{- end }}
+
+    # Additional egress rules — use when Cilium kube-proxy-replacement=true
+    # evaluates policy post-DNAT (kubernetes svc ClusterIP:443 is rewritten
+    # to the control-plane node IP:6443 before the policy check).
+    {{- range .Values.networkPolicy.additionalEgress }}
+    - ports:
+        - port: {{ .port }}
+          protocol: TCP
+      {{- if and .cidr (ne .cidr "0.0.0.0/0") }}
+      to:
+        - ipBlock:
+            cidr: {{ .cidr }}
+      {{- end }}
+    {{- end }}
 {{- end }}

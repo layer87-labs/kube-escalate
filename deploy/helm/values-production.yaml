@@ -6,7 +6,7 @@ replicaCount: 2
 image:
   repository: ghcr.io/layer87-labs/kube-escalate
   pullPolicy: IfNotPresent
-  tag: "0.1.0"
+  tag: "0.2.0"
 
 imagePullSecrets:
   - name: ghcr-pull-secret
@@ -19,12 +19,16 @@ podDisruptionBudget:
   minAvailable: 1
 
 networkPolicy:
-  enabled: true
-  # RKE2 API server port; in-cluster kubernetes svc is 443 but the
-  # actual apiserver (and therefore the kubeconfig) uses 6443.
-  # Allow both so the operator can reach the API server from any code path.
+  # Disabled on this cluster: Cilium 1.18 with kube-proxy-replacement=true
+  # intercepts packets before eBPF DNAT when a specific-port egress policy is
+  # present, preventing the kubernetes service ClusterIP from being resolved.
+  # Standard NetworkPolicy cannot express "allow to kube-apiserver" in a way
+  # Cilium's service translation respects. A CiliumNetworkPolicy with
+  # toEntities: [kube-apiserver] is the correct fix — tracked as follow-up.
+  enabled: false
   apiServerPort: 443
-  apiServerCIDR: "10.43.0.0/16"   # cluster service CIDR (kubernetes svc at 10.43.0.1)
+  apiServerCIDR: "0.0.0.0/0"
+  additionalEgress: []
 
 resources:
   requests:

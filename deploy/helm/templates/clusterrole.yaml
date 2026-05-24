@@ -6,17 +6,23 @@ metadata:
     {{- include "kube-escalate.labels" . | nindent 4 }}
 rules:
   # Watch and delete kube-escalate-managed ClusterRoleBindings (cluster-wide escalations).
+  # update+patch are required to add/remove the kube-escalate.layer87.de/cleanup finalizer.
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterrolebindings"]
-    verbs: ["get", "list", "watch", "delete"]
+    verbs: ["get", "list", "watch", "update", "patch", "delete"]
 
   # Watch and delete kube-escalate-managed RoleBindings (namespace-scoped escalations).
+  # update+patch are required to add/remove the kube-escalate.layer87.de/cleanup finalizer.
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
-    verbs: ["get", "list", "watch", "delete"]
+    verbs: ["get", "list", "watch", "update", "patch", "delete"]
 
-  # Emit Kubernetes Events (EscalationExpired, EscalationRevoked).
+  # Emit Kubernetes Events via both the legacy core/v1 API and the
+  # events.k8s.io/v1 API (used by GetEventRecorder / the new events recorder).
   - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["events.k8s.io"]
     resources: ["events"]
     verbs: ["create", "patch"]
 
