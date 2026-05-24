@@ -1,0 +1,132 @@
+# Default values for kube-escalate.
+# See docs/install.md for configuration examples.
+
+# -- Number of operator replicas.  Set >1 only with leaderElection.enabled=true.
+replicaCount: 1
+
+image:
+  # -- Container image repository.
+  repository: ghcr.io/layer87-labs/kube-escalate
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+  # -- Image tag. Defaults to the chart's appVersion when empty.
+  tag: ""
+
+# -- Image pull secrets for private registries.
+imagePullSecrets: []
+
+# -- Override the chart name used in resource names.
+nameOverride: ""
+# -- Override the fully-qualified resource name.
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a dedicated ServiceAccount for the operator.
+  create: true
+  # -- Name of the ServiceAccount. Generated from the fullname when empty.
+  name: ""
+  # -- Annotations added to the ServiceAccount (e.g. for IRSA / Workload Identity).
+  annotations: {}
+
+# -- Annotations added to every operator Pod.
+podAnnotations: {}
+# -- Extra labels added to every operator Pod.
+podLabels: {}
+
+# -- Pod-level security context.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container-level security context.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# -- Resource requests and limits for the operator container.
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+# -- Liveness probe configuration.
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8081
+  initialDelaySeconds: 15
+  periodSeconds: 20
+
+# -- Readiness probe configuration.
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8081
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+metrics:
+  # -- Expose the Prometheus metrics endpoint.
+  enabled: true
+  # -- Port the metrics server listens on.
+  port: 8080
+  serviceMonitor:
+    # -- Create a Prometheus Operator ServiceMonitor.
+    # Requires the prometheus-operator CRDs to be installed.
+    enabled: false
+    # -- Scrape interval.
+    interval: 30s
+    # -- Scrape timeout.
+    scrapeTimeout: 10s
+    # -- Additional labels added to the ServiceMonitor (e.g. for label-based discovery).
+    labels: {}
+
+leaderElection:
+  # -- Enable leader election.  Must be true when replicaCount > 1.
+  enabled: true
+
+# -- Deployment rollout strategy.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+# -- Grace period (seconds) for the operator to finish an in-flight reconcile
+# before the pod is killed. 10 s is sufficient for a single reconcile loop.
+terminationGracePeriodSeconds: 10
+
+# -- PodDisruptionBudget — enable when replicaCount > 1.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# -- NetworkPolicy — restrict ingress/egress to what the operator actually needs.
+networkPolicy:
+  enabled: false
+  # Port the Kubernetes API server listens on.
+  # 443 (managed clusters) or 6443 (self-hosted). Adjust as needed.
+  apiServerPort: 443
+  # CIDR of the API server.  Leave as 0.0.0.0/0 if unknown; tighten for
+  # clusters where the API server address is fixed (e.g. private EKS endpoint).
+  apiServerCIDR: "0.0.0.0/0"
+
+# -- Node selector for the operator Pod.
+nodeSelector: {}
+# -- Tolerations for the operator Pod.
+tolerations: []
+# -- Affinity rules for the operator Pod.
+affinity: {}
+
+# -- Extra environment variables injected into the operator container.
+extraEnv: []
+# -- Extra command-line arguments passed to the operator binary.
+extraArgs: []

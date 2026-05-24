@@ -1,0 +1,7 @@
+#!/bin/sh
+# Pre-commit hook — runs the full audit before every commit.
+# Install once with: make hooks
+set -e
+
+echo "▶ pre-commit: make audit"
+make audit

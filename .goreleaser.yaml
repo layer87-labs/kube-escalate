@@ -1,0 +1,121 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# NOTE: This file is for LOCAL DEVELOPMENT ONLY (goreleaser build --snapshot).
+# The production release pipeline uses GitHub Actions + relctl — see
+# .github/workflows/release.yaml.
+version: 2
+
+project_name: kube-escalate
+
+before:
+  hooks:
+    - go mod tidy
+
+# ─── Builds ──────────────────────────────────────────────────────────────────
+
+builds:
+  # Operator — Linux only (runs in-cluster via the container image).
+  - id: operator
+    binary: operator
+    main: ./cmd/operator
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+        -X main.version={{.Version}}
+        -X main.commitHash={{.ShortCommit}}
+        -X main.buildDate={{.Date}}
+
+  # kubectl plugin — all platforms used by operators/developers.
+  - id: kubectl-escalate
+    binary: kubectl-escalate
+    main: ./cmd/kubectl-escalate
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+        -X main.version={{.Version}}
+        -X main.commitHash={{.ShortCommit}}
+        -X main.buildDate={{.Date}}
+
+# ─── Archives ────────────────────────────────────────────────────────────────
+
+archives:
+  # Plugin archives — all platforms, named per the install docs convention.
+  - id: kubectl-escalate
+    ids: [kubectl-escalate]
+    name_template: "kubectl-escalate_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+  # Operator archives — Linux only (primary delivery is the OCI image).
+  - id: operator
+    ids: [operator]
+    name_template: "operator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+# ─── Container image ─────────────────────────────────────────────────────────
+#
+# The operator binary is built above by GoReleaser and copied into a
+# distroless image via deploy/Containerfile (no multi-stage build inside it).
+# dockers_v2 produces a single multi-arch manifest covering amd64 and arm64.
+
+dockers_v2:
+  - id: operator
+    ids: [operator]
+    dockerfile: deploy/Containerfile
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    images:
+      - ghcr.io/layer87-labs/kube-escalate
+    tags:
+      - "{{ .Tag }}"
+      - latest
+    labels:
+      org.opencontainers.image.title: kube-escalate
+      org.opencontainers.image.description: Just-in-Time privilege escalation operator for Kubernetes
+      org.opencontainers.image.url: https://github.com/layer87-labs/kube-escalate
+      org.opencontainers.image.source: https://github.com/layer87-labs/kube-escalate
+      org.opencontainers.image.licenses: Apache-2.0
+
+# ─── Checksums ───────────────────────────────────────────────────────────────
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# ─── Changelog ───────────────────────────────────────────────────────────────
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: Features
+      regexp: "^feat"
+      order: 0
+    - title: Bug Fixes
+      regexp: "^fix"
+      order: 1
+    - title: Other
+      order: 999
+
+# ─── GitHub Release ──────────────────────────────────────────────────────────
+
+release:
+  github:
+    owner: layer87-labs
+    name: kube-escalate
+  draft: false
+  prerelease: auto
