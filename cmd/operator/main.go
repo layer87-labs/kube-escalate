@@ -5,6 +5,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -36,6 +37,7 @@ func main() {
 		metricsAddr          string
 		probeAddr            string
 		enableLeaderElection bool
+		maxDuration          time.Duration
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080",
@@ -44,6 +46,8 @@ func main() {
 		"Address the health/readiness probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election; required when running multiple replicas.")
+	flag.DurationVar(&maxDuration, "max-duration", operator.DefaultMaxDuration,
+		"Maximum TTL an escalation may request. Requests beyond this are clamped on first reconcile.")
 
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
@@ -71,10 +75,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := operator.NewEscalationReconciler(
+	reconciler := operator.NewEscalationReconciler(
 		mgr.GetClient(),
 		mgr.GetEventRecorder("kube-escalate"),
-	).SetupWithManager(mgr); err != nil {
+	)
+	reconciler.MaxDuration = maxDuration
+	if err := reconciler.SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to register escalation reconciler")
 		os.Exit(1)
 	}

@@ -67,6 +67,47 @@ func reconcileRequest(name string) ctrl.Request {
 	return ctrl.Request{NamespacedName: types.NamespacedName{Name: name}}
 }
 
+func namespacedReconcileRequest(namespace, name string) ctrl.Request {
+	return ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}}
+}
+
+func managedRB(namespace, name, requester, role, expiresAt string) *rbacv1.RoleBinding {
+	return &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				operator.LabelManaged: "true",
+			},
+			Annotations: map[string]string{
+				operator.AnnotationRequester: requester,
+				operator.AnnotationExpiresAt: expiresAt,
+				operator.AnnotationReason:    "unit-test escalation",
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "Role",
+			Name:     role,
+		},
+		Subjects: []rbacv1.Subject{
+			{APIGroup: rbacv1.GroupName, Kind: "User", Name: "oidc:" + requester},
+		},
+	}
+}
+
+// getRB fetches the current state of a RoleBinding from the fake store.
+func getRB(t *testing.T, c client.Client, namespace, name string) (*rbacv1.RoleBinding, bool) {
+	t.Helper()
+	var rb rbacv1.RoleBinding
+	err := c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: name}, &rb)
+	if errors.IsNotFound(err) {
+		return nil, false
+	}
+	require.NoError(t, err)
+	return &rb, true
+}
+
 // getCRB fetches the current state of a CRB from the fake store.
 func getCRB(t *testing.T, c client.Client, name string) (*rbacv1.ClusterRoleBinding, bool) {
 	t.Helper()
@@ -243,6 +284,102 @@ func TestReconcile_MalformedExpiresAt_ReturnsError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse expires-at")
+}
+
+// ─── namespace-scoped RoleBindings ──────────────────────────────────────────
+
+func TestReconcile_ExpiredRB_FullLifecycle(t *testing.T) {
+	expiredAt := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
+	rb := managedRB("tenant-acme", "kube-escalate-expired-rb-001", "eike@layer87.de", "editor", expiredAt)
+
+	reconciler, recorder, c := newTestSetup(t, rb)
+	ctx := context.Background()
+	req := namespacedReconcileRequest(rb.Namespace, rb.Name)
+
+	// Cycle 1: add finalizer.
+	_, err := reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+	updated, exists := getRB(t, c, rb.Namespace, rb.Name)
+	require.True(t, exists)
+	assert.Contains(t, updated.Finalizers, operator.FinalizerName)
+
+	// Cycle 2: TTL elapsed — Delete called.
+	_, err = reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+
+	// Cycle 3: finalization.
+	_, err = reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+
+	_, exists = getRB(t, c, rb.Namespace, rb.Name)
+	assert.False(t, exists, "RB must have been deleted — this is the fix for the namespace-scoped TTL gap")
+
+	event := drainEvent(t, recorder)
+	assert.Contains(t, event, operator.EventReasonExpired)
+	assert.Contains(t, event, "eike@layer87.de")
+}
+
+func TestReconcile_ActiveRB_RequeuesAfterFinalizerAdded(t *testing.T) {
+	futureAt := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
+	rb := managedRB("tenant-acme", "kube-escalate-active-rb-002", "eike@layer87.de", "editor", futureAt)
+
+	reconciler, _, c := newTestSetup(t, rb)
+	ctx := context.Background()
+	req := namespacedReconcileRequest(rb.Namespace, rb.Name)
+
+	_, err := reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+
+	result, err := reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+	assert.Greater(t, result.RequeueAfter, time.Duration(0))
+
+	updated, exists := getRB(t, c, rb.Namespace, rb.Name)
+	require.True(t, exists)
+	assert.Contains(t, updated.Finalizers, operator.FinalizerName)
+}
+
+// ─── max-duration clamp ──────────────────────────────────────────────────────
+
+func TestReconcile_RequestBeyondMaxDuration_IsClamped(t *testing.T) {
+	requestedAt := time.Now().UTC().Add(1000 * time.Hour).Format(time.RFC3339)
+	crb := managedCRB("kube-escalate-toolong-004", "eike@layer87.de", "cluster-admin", requestedAt)
+
+	reconciler, recorder, c := newTestSetup(t, crb)
+	reconciler.MaxDuration = 1 * time.Hour
+	ctx := context.Background()
+	req := reconcileRequest(crb.Name)
+
+	_, err := reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+
+	updated, exists := getCRB(t, c, crb.Name)
+	require.True(t, exists)
+	clampedExpiry, err := time.Parse(time.RFC3339, updated.Annotations[operator.AnnotationExpiresAt])
+	require.NoError(t, err)
+	assert.WithinDuration(t, time.Now().UTC().Add(1*time.Hour), clampedExpiry, 5*time.Second,
+		"expires-at must be clamped to ~now+MaxDuration, not the requested 1000h")
+
+	event := drainEvent(t, recorder)
+	assert.Contains(t, event, operator.EventReasonClamped)
+}
+
+func TestReconcile_RequestWithinMaxDuration_IsUnchanged(t *testing.T) {
+	requestedAt := time.Now().UTC().Add(30 * time.Minute).Format(time.RFC3339)
+	crb := managedCRB("kube-escalate-fine-005", "eike@layer87.de", "view", requestedAt)
+
+	reconciler, recorder, c := newTestSetup(t, crb)
+	reconciler.MaxDuration = 1 * time.Hour
+	ctx := context.Background()
+	req := reconcileRequest(crb.Name)
+
+	_, err := reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+
+	updated, exists := getCRB(t, c, crb.Name)
+	require.True(t, exists)
+	assert.Equal(t, requestedAt, updated.Annotations[operator.AnnotationExpiresAt])
+	assert.Empty(t, recorder.Events, "no clamp event expected when the request is within bounds")
 }
 
 func TestReconcile_AlreadyDeletedCRB_IsNoOp(t *testing.T) {
