@@ -42,7 +42,8 @@ func newTestSetup(t *testing.T, objs ...client.Object) (*operator.EscalationReco
 func managedCRB(name, requester, role, expiresAt string) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:              name,
+			CreationTimestamp: metav1.Now(),
 			Labels: map[string]string{
 				operator.LabelManaged: "true",
 			},
@@ -74,8 +75,9 @@ func namespacedReconcileRequest(namespace, name string) ctrl.Request {
 func managedRB(namespace, name, requester, role, expiresAt string) *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
+			Name:              name,
+			Namespace:         namespace,
+			CreationTimestamp: metav1.Now(),
 			Labels: map[string]string{
 				operator.LabelManaged: "true",
 			},
@@ -350,18 +352,33 @@ func TestReconcile_RequestBeyondMaxDuration_IsClamped(t *testing.T) {
 	ctx := context.Background()
 	req := reconcileRequest(crb.Name)
 
+	// Cycle 1: finalizer added immediately in a finalizer-only Update — the
+	// expires-at annotation is never rewritten (see reconcileBinding's
+	// comment: any Update that also touches an unrelated annotation is
+	// validated by the API server as if granting the binding's RoleRef, and
+	// gets rejected when the operator doesn't hold that role's own
+	// permissions — reproduced live in production, see
+	// docs/testprotocol-2026-08-26.md).
 	_, err := reconciler.Reconcile(ctx, req)
 	require.NoError(t, err)
 
 	updated, exists := getCRB(t, c, crb.Name)
 	require.True(t, exists)
-	clampedExpiry, err := time.Parse(time.RFC3339, updated.Annotations[operator.AnnotationExpiresAt])
-	require.NoError(t, err)
-	assert.WithinDuration(t, time.Now().UTC().Add(1*time.Hour), clampedExpiry, 5*time.Second,
-		"expires-at must be clamped to ~now+MaxDuration, not the requested 1000h")
+	assert.Contains(t, updated.Finalizers, operator.FinalizerName,
+		"cycle 1: finalizer must be added immediately, in a finalizer-only Update")
+	assert.Equal(t, requestedAt, updated.Annotations[operator.AnnotationExpiresAt],
+		"expires-at annotation must never be rewritten")
 
 	event := drainEvent(t, recorder)
 	assert.Contains(t, event, operator.EventReasonClamped)
+
+	// Cycle 2: the clamp is enforced purely by scheduling — the operator
+	// must requeue based on CreationTimestamp+MaxDuration, not the unclamped
+	// annotation value.
+	result, err := reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+	assert.LessOrEqual(t, result.RequeueAfter, 1*time.Hour+2*time.Second,
+		"requeue must honor the clamped ceiling, not the requested 1000h")
 }
 
 func TestReconcile_RequestWithinMaxDuration_IsUnchanged(t *testing.T) {

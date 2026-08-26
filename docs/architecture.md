@@ -41,11 +41,20 @@ flowchart LR
    labelled `kube-escalate/managed=true` via a controller-runtime predicate
    filter. Unmanaged bindings are never enqueued.
 
-4. On first reconcile, if `kube-escalate/expires-at` exceeds `now + --max-duration`
-   (default `24h`), the operator clamps the annotation down to the ceiling and
-   emits a `Warning/EscalationClamped` event — this is enforced regardless of
-   what the plugin/client requested, since there is no admission webhook to
-   reject the request up front.
+4. On first reconcile, if `kube-escalate/expires-at` exceeds
+   `CreationTimestamp + --max-duration` (default `24h`), the operator treats
+   `CreationTimestamp + --max-duration` as the effective expiry for deletion
+   purposes and emits a `Warning/EscalationClamped` event — enforced
+   regardless of what the plugin/client requested, since there is no
+   admission webhook to reject the request up front. **The `expires-at`
+   annotation itself is never rewritten**: any `Update` to a managed binding
+   — even one only touching an unrelated annotation — is validated by the API
+   server as if granting the binding's RoleRef, so an operator whose own
+   ServiceAccount doesn't hold that role's permissions would be rejected;
+   only pure finalizer-only updates are exempt from that check. Practical
+   effect: `kubectl escalate status` may show the originally requested TTL
+   even when it's actually going to be cut short — check for an
+   `EscalationClamped` event for the real effective expiry.
 
 5. On each subsequent reconcile the operator parses `kube-escalate/expires-at`:
    - **TTL elapsed** → delete binding, emit `Warning/EscalationExpired` event,

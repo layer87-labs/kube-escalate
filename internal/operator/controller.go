@@ -105,8 +105,10 @@ func (r *EscalationReconciler) maxDuration() time.Duration {
 //
 // Lifecycle for a managed CRB/RB:
 //
-//  1. First reconcile (no finalizer) — clamp expires-at to MaxDuration if
-//     needed, add FinalizerName, record creation metric, requeue immediately.
+//  1. First reconcile (no finalizer) — compute the effective (possibly
+//     MaxDuration-clamped) expiry, add FinalizerName, record creation
+//     metric, requeue immediately. The expires-at annotation itself is
+//     never rewritten (see the clamp comment below for why).
 //  2. Subsequent reconcile (finalizer present, TTL not elapsed) — requeue just
 //     after the expiry instant.
 //  3. Subsequent reconcile (TTL elapsed) — call Delete; because the finalizer is
@@ -161,27 +163,40 @@ func (r *EscalationReconciler) reconcileBinding(
 		return ctrl.Result{}, nil
 	}
 
-	expiresAt, err := time.Parse(time.RFC3339, expiresAtRaw)
+	requestedExpiresAt, err := time.Parse(time.RFC3339, expiresAtRaw)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconcile parse expires-at %q: %w", expiresAtRaw, err)
 	}
 
-	// ── First reconcile: clamp TTL, register finalizer + record creation ────
+	// The effective expiry is computed from CreationTimestamp+MaxDuration on
+	// every reconcile rather than ever being written back to the object's
+	// expires-at annotation. Any Update to a managed binding — even one that
+	// only touches an unrelated annotation — is validated by the API server
+	// as if it were granting the binding's RoleRef, so an operator whose own
+	// ServiceAccount doesn't hold that role's permissions gets rejected. The
+	// one exception, observed reliably in production, is a finalizer-only
+	// Update (AddFinalizer/RemoveFinalizer below) — Kubernetes exempts pure
+	// finalizer changes from that check. Recomputing the cap on the fly
+	// keeps every Update finalizer-only, so this never depends on the
+	// operator holding the requested role's own permissions.
+	clamped := false
+	expiresAt := requestedExpiresAt
+	if ceiling := obj.GetCreationTimestamp().Time.UTC().Add(r.maxDuration()); requestedExpiresAt.After(ceiling) {
+		expiresAt = ceiling
+		clamped = true
+	}
+
+	// ── First reconcile: register finalizer + record creation ───────────────
 	if !controllerutil.ContainsFinalizer(obj, FinalizerName) {
-		now := time.Now().UTC()
-		if ceiling := now.Add(r.maxDuration()); expiresAt.After(ceiling) {
+		if clamped {
 			logger.Info("requested TTL exceeds max-duration; clamping",
 				"requester", obj.GetAnnotations()[AnnotationRequester],
-				"requested_expires_at", expiresAt.Format(time.RFC3339),
-				"clamped_expires_at", ceiling.Format(time.RFC3339),
+				"requested_expires_at", requestedExpiresAt.Format(time.RFC3339),
+				"clamped_expires_at", expiresAt.Format(time.RFC3339),
 			)
 			r.recorder.Eventf(obj, nil, corev1.EventTypeWarning, EventReasonClamped,
-				"Clamp", "Requested TTL for %s exceeded the maximum of %s and was shortened to %s",
-				obj.GetAnnotations()[AnnotationRequester], r.maxDuration(), ceiling.Format(time.RFC3339))
-			expiresAt = ceiling
-			annotations := obj.GetAnnotations()
-			annotations[AnnotationExpiresAt] = expiresAt.Format(time.RFC3339)
-			obj.SetAnnotations(annotations)
+				"Clamp", "Requested TTL for %s exceeded the maximum of %s; effective expiry is %s (expires-at annotation is not rewritten)",
+				obj.GetAnnotations()[AnnotationRequester], r.maxDuration(), expiresAt.Format(time.RFC3339))
 		}
 
 		controllerutil.AddFinalizer(obj, FinalizerName)
@@ -271,6 +286,9 @@ func (r *EscalationReconciler) handleFinalization(
 		// Malformed annotation — treat as expiry so the binding is cleaned up.
 		logger.Error(err, "expires-at unparseable during finalization; treating as expired")
 		expiresAt = time.Time{} // zero → already "in the past"
+	}
+	if ceiling := obj.GetCreationTimestamp().Time.UTC().Add(r.maxDuration()); expiresAt.After(ceiling) {
+		expiresAt = ceiling
 	}
 
 	if time.Now().UTC().After(expiresAt) {
