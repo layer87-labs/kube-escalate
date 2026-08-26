@@ -47,7 +47,9 @@ func Status(ctx context.Context, opts StatusOptions, cs kubernetes.Interface, w 
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(tw, "REQUESTER\tROLE\tSCOPE\tEXPIRES AT\tREMAINING")
+	if _, err := fmt.Fprintln(tw, "REQUESTER\tROLE\tSCOPE\tEXPIRES AT\tREMAINING"); err != nil {
+		return fmt.Errorf("status: write header: %w", err)
+	}
 
 	now := time.Now().UTC()
 	rows := 0
@@ -59,8 +61,10 @@ func Status(ctx context.Context, opts StatusOptions, cs kubernetes.Interface, w 
 			continue
 		}
 		expiresAt := crb.Annotations[AnnotationExpiresAt]
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			requester, crb.RoleRef.Name, "cluster", expiresAt, remainingTTL(expiresAt, now))
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			requester, crb.RoleRef.Name, "cluster", expiresAt, remainingTTL(expiresAt, now)); err != nil {
+			return fmt.Errorf("status: write row: %w", err)
+		}
 		rows++
 	}
 
@@ -71,15 +75,21 @@ func Status(ctx context.Context, opts StatusOptions, cs kubernetes.Interface, w 
 			continue
 		}
 		expiresAt := rb.Annotations[AnnotationExpiresAt]
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			requester, rb.RoleRef.Name, "ns/"+rb.Namespace, expiresAt, remainingTTL(expiresAt, now))
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			requester, rb.RoleRef.Name, "ns/"+rb.Namespace, expiresAt, remainingTTL(expiresAt, now)); err != nil {
+			return fmt.Errorf("status: write row: %w", err)
+		}
 		rows++
 	}
 
-	tw.Flush()
+	if err := tw.Flush(); err != nil {
+		return fmt.Errorf("status: flush output: %w", err)
+	}
 
 	if rows == 0 {
-		fmt.Fprintln(w, "No active escalations.")
+		if _, err := fmt.Fprintln(w, "No active escalations."); err != nil {
+			return fmt.Errorf("status: write output: %w", err)
+		}
 	}
 	return nil
 }
