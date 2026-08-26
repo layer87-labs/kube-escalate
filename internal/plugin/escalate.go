@@ -111,9 +111,13 @@ func clusterEscalate(
 		return fmt.Errorf("clusterEscalate: %w", err)
 	}
 
-	fmt.Fprintf(w, "✓ Escalated  requester=%s  role=%s  scope=cluster  expires=%s\n",
-		username, role, annotations[AnnotationExpiresAt])
-	fmt.Fprintf(w, "  Resource: ClusterRoleBinding/%s\n", name)
+	if _, err := fmt.Fprintf(w, "✓ Escalated  requester=%s  role=%s  scope=cluster  expires=%s\n",
+		username, role, annotations[AnnotationExpiresAt]); err != nil {
+		return fmt.Errorf("clusterEscalate: write output: %w", err)
+	}
+	if _, err := fmt.Fprintf(w, "  Resource: ClusterRoleBinding/%s\n", name); err != nil {
+		return fmt.Errorf("clusterEscalate: write output: %w", err)
+	}
 	return nil
 }
 
@@ -145,8 +149,12 @@ func namespaceEscalate(
 		return fmt.Errorf("namespaceEscalate: %w", err)
 	}
 
-	fmt.Fprintf(w, "✓ Escalated  requester=%s  role=%s  scope=ns/%s  expires=%s\n",
-		username, role, namespace, annotations[AnnotationExpiresAt])
-	fmt.Fprintf(w, "  Resource: RoleBinding/%s/%s\n", namespace, name)
+	if _, err := fmt.Fprintf(w, "✓ Escalated  requester=%s  role=%s  scope=ns/%s  expires=%s\n",
+		username, role, namespace, annotations[AnnotationExpiresAt]); err != nil {
+		return fmt.Errorf("namespaceEscalate: write output: %w", err)
+	}
+	if _, err := fmt.Fprintf(w, "  Resource: RoleBinding/%s/%s\n", namespace, name); err != nil {
+		return fmt.Errorf("namespaceEscalate: write output: %w", err)
+	}
 	return nil
 }

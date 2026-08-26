@@ -49,8 +49,10 @@ func Revoke(ctx context.Context, opts RevokeOptions, cs kubernetes.Interface, w 
 		); err != nil {
 			return fmt.Errorf("revoke: delete ClusterRoleBinding %s: %w", crb.Name, err)
 		}
-		fmt.Fprintf(w, "✓ Revoked  ClusterRoleBinding/%s  (%s → %s)\n",
-			crb.Name, crb.Annotations[AnnotationRequester], crb.RoleRef.Name)
+		if _, err := fmt.Fprintf(w, "✓ Revoked  ClusterRoleBinding/%s  (%s → %s)\n",
+			crb.Name, crb.Annotations[AnnotationRequester], crb.RoleRef.Name); err != nil {
+			return fmt.Errorf("revoke: write output: %w", err)
+		}
 		revoked++
 	}
 
@@ -72,13 +74,17 @@ func Revoke(ctx context.Context, opts RevokeOptions, cs kubernetes.Interface, w 
 		); err != nil {
 			return fmt.Errorf("revoke: delete RoleBinding %s/%s: %w", rb.Namespace, rb.Name, err)
 		}
-		fmt.Fprintf(w, "✓ Revoked  RoleBinding/%s/%s  (%s → %s)\n",
-			rb.Namespace, rb.Name, rb.Annotations[AnnotationRequester], rb.RoleRef.Name)
+		if _, err := fmt.Fprintf(w, "✓ Revoked  RoleBinding/%s/%s  (%s → %s)\n",
+			rb.Namespace, rb.Name, rb.Annotations[AnnotationRequester], rb.RoleRef.Name); err != nil {
+			return fmt.Errorf("revoke: write output: %w", err)
+		}
 		revoked++
 	}
 
 	if revoked == 0 {
-		fmt.Fprintln(w, "No escalations to revoke.")
+		if _, err := fmt.Fprintln(w, "No escalations to revoke."); err != nil {
+			return fmt.Errorf("revoke: write output: %w", err)
+		}
 	}
 	return nil
 }

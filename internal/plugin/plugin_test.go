@@ -26,7 +26,7 @@ import (
 func fakeCS(t *testing.T, username string, groups []string, objects ...runtime.Object) *k8sfake.Clientset {
 	t.Helper()
 	cs := k8sfake.NewSimpleClientset(objects...)
-	cs.Fake.PrependReactor("create", "selfsubjectreviews",
+	cs.PrependReactor("create", "selfsubjectreviews",
 		func(_ k8stesting.Action) (bool, runtime.Object, error) {
 			return true, &authv1.SelfSubjectReview{
 				Status: authv1.SelfSubjectReviewStatus{
