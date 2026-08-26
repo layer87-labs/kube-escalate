@@ -93,6 +93,11 @@ leaderElection:
   # -- Enable leader election.  Must be true when replicaCount > 1.
   enabled: true
 
+# -- Maximum TTL an escalation may request. Requests exceeding this are
+# clamped to now+maxDuration on first reconcile, regardless of what the
+# plugin/client asked for. Go duration string (e.g. "24h", "30m").
+maxDuration: "24h"
+
 # -- Deployment rollout strategy.
 strategy:
   type: RollingUpdate

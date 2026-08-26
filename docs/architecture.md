@@ -18,11 +18,12 @@ flowchart LR
     end
 
     plugin -- "① SelfSubjectReview\n(OIDC identity)" --> apiserver
-    plugin -- "② Create annotated\nClusterRoleBinding" --> apiserver
+    plugin -- "② Create annotated\nCRB / RoleBinding" --> apiserver
     apiserver -. "stores" .-> crb
-    operator -- "③ Watch labeled\nCRBs/RBs" --> apiserver
-    operator -- "④ Delete on TTL\nexpiry" --> apiserver
-    operator -- "⑤ Emit\nEscalationExpired" --> events
+    operator -- "③ Watch labeled\nCRBs and RBs" --> apiserver
+    operator -- "④ Clamp TTL to\n--max-duration" --> apiserver
+    operator -- "⑤ Delete on TTL\nexpiry" --> apiserver
+    operator -- "⑥ Emit Expired /\nClamped / Revoked" --> events
     operator -. "exposes" .-> metrics
 ```
 
@@ -36,16 +37,23 @@ flowchart LR
    `--namespace`) annotated with the expiry timestamp, requester identity, and
    reason. The binding immediately grants the requested role.
 
-3. **Operator** watches all objects labelled `kube-escalate/managed=true` via a
-   controller-runtime predicate filter. Unmanaged CRBs are never enqueued.
+3. **Operator** watches all `ClusterRoleBinding` and `RoleBinding` objects
+   labelled `kube-escalate/managed=true` via a controller-runtime predicate
+   filter. Unmanaged bindings are never enqueued.
 
-4. On each reconcile the operator parses `kube-escalate/expires-at`:
+4. On first reconcile, if `kube-escalate/expires-at` exceeds `now + --max-duration`
+   (default `24h`), the operator clamps the annotation down to the ceiling and
+   emits a `Warning/EscalationClamped` event — this is enforced regardless of
+   what the plugin/client requested, since there is no admission webhook to
+   reject the request up front.
+
+5. On each subsequent reconcile the operator parses `kube-escalate/expires-at`:
    - **TTL elapsed** → delete binding, emit `Warning/EscalationExpired` event,
      record Prometheus metrics.
    - **TTL not elapsed** → requeue exactly at `expiresAt + 1s`; no polling
      window, no grace period.
 
-5. The user's elevated access is active for exactly the requested duration.
+6. The user's elevated access is active for exactly the (possibly clamped) duration.
 
 ---
 
@@ -55,7 +63,8 @@ flowchart LR
 |---|---|
 | **Tamper-proof identity** | Requester is read from `SelfSubjectReview` — populated by the API server, never from CLI arguments |
 | **Automatic expiry** | Reconciler requeues at the exact expiry instant; no polling gap |
-| **Least-privilege operator** | ClusterRole grants only `get/list/watch/delete` on `clusterrolebindings` and `rolebindings` — the operator can never *create* a binding |
+| **Least-privilege operator** | ClusterRole grants only `get/list/watch/update/patch/delete` on `clusterrolebindings` and `rolebindings` (update/patch needed for the cleanup finalizer) — the operator can never *create* a binding |
+| **TTL ceiling** | The operator clamps any requested `expires-at` beyond `--max-duration` (default `24h`) on first reconcile — enforced server-side even though there is no admission webhook |
 | **No admission webhook** | No availability dependency on the operator path; if the operator restarts, existing bindings remain until it reconciles again |
 | **No CRD** | Uses standard `rbac.authorization.k8s.io/v1` objects — works on any Kubernetes 1.26+ cluster without CRD installation |
 | **No database** | All state lives in Kubernetes etcd; no external store to secure or back up |
