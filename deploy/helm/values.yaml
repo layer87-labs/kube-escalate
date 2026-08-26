@@ -80,7 +80,9 @@ metrics:
   port: 8080
   serviceMonitor:
     # -- Create a Prometheus Operator ServiceMonitor.
-    # Requires the prometheus-operator CRDs to be installed.
+    # Requires the prometheus-operator CRDs to be installed. Without this the
+    # /metrics endpoint is served but never scraped — the audit trail then
+    # lives only in short-lived Kubernetes Events.
     enabled: false
     # -- Scrape interval.
     interval: 30s

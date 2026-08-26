@@ -104,12 +104,18 @@ reconcile N+1→ DeletionTimestamp set → handleFinalization:
 ```
 
 ### Prometheus metrics
-All five instruments are registered with `metrics.Registry` at package init:
-`kube_escalate_active_escalations` (gauge),
-`kube_escalate_escalations_total`, `kube_escalate_expired_total`,
-`kube_escalate_revoked_total` (counters),
-`kube_escalate_duration_seconds` (histogram).
-Labels: `{user, role, namespace}`.
+The cumulative instruments are registered with `metrics.Registry` at package
+init: `kube_escalate_escalations_total`, `kube_escalate_expired_total`,
+`kube_escalate_revoked_total` (counters), `kube_escalate_duration_seconds`
+(histogram). Labels: `{user, role, namespace}`.
+
+`kube_escalate_active_escalations` (gauge) is **not** one of them. It is
+produced by `activeEscalationsCollector`, registered in `SetupWithManager`
+(it needs a client), which counts managed bindings from the manager cache at
+scrape time. Do not "simplify" this back into an incremental gauge: creations
+are only counted on a binding's first reconcile, so after any operator
+restart the gauge would resume from zero while escalations are still live and
+then go negative as they expire. See `TestActiveEscalations_CountedFromLiveState`.
 
 ## Code rules
 

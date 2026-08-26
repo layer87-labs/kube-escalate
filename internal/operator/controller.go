@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -79,6 +80,14 @@ func NewEscalationReconciler(c client.Client, r kevents.EventRecorder) *Escalati
 // SetupWithManager registers the reconciler with the controller-runtime Manager.
 // Only CRBs/RBs that carry kube-escalate/managed=true are enqueued.
 func (r *EscalationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// The active-escalations gauge is collected from the manager's cache at
+	// scrape time rather than maintained incrementally — see
+	// activeEscalationsCollector for why. Registered here because it needs a
+	// client, which does not exist at package-init time.
+	if err := metrics.Registry.Register(NewActiveEscalationsCollector(mgr.GetClient())); err != nil {
+		return fmt.Errorf("SetupWithManager register active-escalations collector: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&rbacv1.ClusterRoleBinding{}).
 		WithEventFilter(predicate.NewPredicateFuncs(hasManagedLabel)).
