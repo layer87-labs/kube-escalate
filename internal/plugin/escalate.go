@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"regexp"
@@ -52,9 +54,37 @@ func sanitizeForName(s string) string {
 }
 
 // escalationName produces a unique, human-readable CRB / RB name.
-func escalationName(username string) string {
-	return fmt.Sprintf("kube-escalate-%s-%d",
-		sanitizeForName(username), time.Now().Unix())
+//
+// The suffix is random rather than a timestamp: a second-resolution timestamp
+// collides when the same user requests two escalations within the same second
+// (a retry, a script, two terminals), and the second Create then fails with
+// AlreadyExists. The timestamp carried no information anyway — the object's
+// own CreationTimestamp is authoritative, and expires-at is an annotation.
+func escalationName(username string) (string, error) {
+	suffix, err := randomSuffix()
+	if err != nil {
+		return "", fmt.Errorf("escalationName: %w", err)
+	}
+	// Kubernetes object names are limited to 253 characters. Truncate the
+	// username segment so a long identity cannot push the name over the limit
+	// or crowd out the suffix that makes it unique.
+	name := sanitizeForName(username)
+	if len(name) > maxNameSegment {
+		name = strings.Trim(name[:maxNameSegment], "-")
+	}
+	return fmt.Sprintf("kube-escalate-%s-%s", name, suffix), nil
+}
+
+// maxNameSegment bounds the username portion of a generated escalation name.
+const maxNameSegment = 63
+
+// randomSuffix returns 8 hex characters of cryptographic randomness.
+func randomSuffix() (string, error) {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("randomSuffix: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // Escalate creates an annotated ClusterRoleBinding (cluster-wide) or RoleBinding
@@ -67,7 +97,10 @@ func Escalate(ctx context.Context, opts EscalateOptions, cs kubernetes.Interface
 		return fmt.Errorf("escalate: %w", err)
 	}
 
-	name := escalationName(username)
+	name, err := escalationName(username)
+	if err != nil {
+		return fmt.Errorf("escalate: %w", err)
+	}
 	expiresAt := time.Now().UTC().Add(opts.Duration)
 
 	labels := map[string]string{LabelManaged: "true"}

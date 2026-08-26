@@ -81,6 +81,37 @@ flowchart LR
 
 ---
 
+## Threat model — what this does and does not protect against
+
+kube-escalate addresses **standing privilege and accident**: credentials that
+are cluster-admin around the clock and get stolen, reused in a script, or used
+carelessly — and the inability to answer *"who held admin last Tuesday, and
+why?"*.
+
+It does **not** contain a user who is authorised to escalate and chooses to
+abuse it. When the target role is `cluster-admin`, the time bound is only
+enforced against someone who cooperates with it. During the escalation window
+that user is a full cluster admin and can therefore delete any admission policy
+constraining them, `update` their own binding's `expires-at` annotation, strip
+the cleanup finalizer, uninstall the operator, or simply create an ordinary
+permanent ClusterRoleBinding. None of that is preventable from inside the
+cluster once cluster-admin has been granted — by this or by any other
+JIT tool.
+
+What follows from that:
+
+- **Who may escalate is the real security decision**, not the TTL. Adding
+  someone to the group that may reach `cluster-admin` is equivalent to handing
+  them a permanent admin kubeconfig, plus an audit trail.
+- **Ship the logs off-cluster.** Kubernetes Events are short-lived (~1h) and an
+  escalated user can delete them. Exported logs cannot be retracted.
+- **Alert on tamper signals**: mutation of the operator Deployment, of any
+  admission policy governing escalation, or of a managed binding's annotations.
+- **Prefer narrower targets.** A role that cannot edit RBAC or admission
+  configuration *is* genuinely bounded by the TTL. `cluster-admin` is not.
+
+---
+
 ## Bootstrap order
 
 The following must exist before the first escalation can be created:
