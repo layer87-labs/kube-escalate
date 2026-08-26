@@ -6,8 +6,13 @@ description: >
   a full audit trail via Kubernetes Events, and Prometheus metrics —
   no database, no external dependencies.
 type: application
-version: 0.3.0
-appVersion: "0.3.0"
+# version and appVersion are PLACEHOLDERS. The release workflow packages the
+# chart with `helm package --version $VERSION --app-version $VERSION` using the
+# relctl-derived release version, so whatever is committed here never reaches
+# the registry. Do not treat these as the published version — check the GitHub
+# releases or `helm show chart oci://ghcr.io/layer87-labs/charts/kube-escalate`.
+version: 0.0.0
+appVersion: "0.0.0"
 keywords:
   - kubernetes
   - rbac
