@@ -104,12 +104,18 @@ reconcile N+1→ DeletionTimestamp set → handleFinalization:
 ```
 
 ### Prometheus metrics
-All five instruments are registered with `metrics.Registry` at package init:
-`kube_escalate_active_escalations` (gauge),
-`kube_escalate_escalations_total`, `kube_escalate_expired_total`,
-`kube_escalate_revoked_total` (counters),
-`kube_escalate_duration_seconds` (histogram).
-Labels: `{user, role, namespace}`.
+The cumulative instruments are registered with `metrics.Registry` at package
+init: `kube_escalate_escalations_total`, `kube_escalate_expired_total`,
+`kube_escalate_revoked_total` (counters), `kube_escalate_duration_seconds`
+(histogram). Labels: `{user, role, namespace}`.
+
+`kube_escalate_active_escalations` (gauge) is **not** one of them. It is
+produced by `activeEscalationsCollector`, registered in `SetupWithManager`
+(it needs a client), which counts managed bindings from the manager cache at
+scrape time. Do not "simplify" this back into an incremental gauge: creations
+are only counted on a binding's first reconcile, so after any operator
+restart the gauge would resume from zero while escalations are still live and
+then go negative as they expire. See `TestActiveEscalations_CountedFromLiveState`.
 
 ## Code rules
 
@@ -126,11 +132,17 @@ Labels: `{user, role, namespace}`.
 
 ## Known limitations (v1)
 
-- **Namespace-scoped escalations (RoleBindings) are not watched by the operator.**
-  `kubectl escalate --namespace` creates a RoleBinding, but the reconciler only
-  watches `ClusterRoleBinding`. RBs will not auto-expire; they must be manually
-  revoked. Fixing this requires adding a second `Watches(&rbacv1.RoleBinding{}, ...)`
-  in `SetupWithManager` and making `Reconcile` handle both types.
+- **`kube-escalate` enforces no role/target allow-list.** Whether a user may bind
+  themselves to a given ClusterRole/Role is entirely governed by Kubernetes' own
+  RBAC privilege-escalation rules (`bind`/`escalate` verbs, or already holding
+  the target role's permissions) on the caller's existing grants — see
+  `docs/architecture.md`. Scoping *which* roles a given group may request is an
+  IaC/RBAC concern (`resourceNames` on ClusterRoles, Zitadel group mapping), not
+  something this operator or plugin validates.
+- **Requested TTL is capped, not validated per-role.** The operator clamps any
+  `expires-at` beyond `--max-duration` (default `24h`, see `EscalationReconciler.MaxDuration`)
+  on first reconcile. There is no per-role or per-user TTL policy — one cap
+  applies cluster-wide.
 
 ## Out of scope (v1)
 

@@ -3,6 +3,7 @@ package plugin_test
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,6 +94,54 @@ func managedRB(name, namespace, requester, role, expiresAt string) *rbacv1.RoleB
 }
 
 // ─── Escalate ─────────────────────────────────────────────────────────────────
+
+// TestEscalate_ConsecutiveRequests_DoNotCollide is the regression test for
+// name generation. The name suffix used to be a second-resolution Unix
+// timestamp, so two escalations by the same user within the same second
+// produced the same object name and the second Create failed with
+// AlreadyExists — reachable from a retry, a script, or two terminals.
+func TestEscalate_ConsecutiveRequests_DoNotCollide(t *testing.T) {
+	cs := fakeCS(t, "eike@layer87.de", []string{"oidc:platform-operator"})
+	var out bytes.Buffer
+
+	opts := plugin.EscalateOptions{
+		Role:     "view",
+		Duration: time.Hour,
+		Reason:   "back-to-back requests",
+	}
+
+	// Deliberately no delay between the two calls.
+	require.NoError(t, plugin.Escalate(context.Background(), opts, cs, &out))
+	require.NoError(t, plugin.Escalate(context.Background(), opts, cs, &out),
+		"a second escalation in the same second must not collide with the first")
+
+	crbs, err := cs.RbacV1().ClusterRoleBindings().List(context.Background(),
+		metav1.ListOptions{LabelSelector: plugin.LabelManaged + "=true"})
+	require.NoError(t, err)
+	require.Len(t, crbs.Items, 2, "both escalations should exist as distinct objects")
+	assert.NotEqual(t, crbs.Items[0].Name, crbs.Items[1].Name)
+}
+
+// TestEscalate_LongUsername_ProducesValidName guards the 253-character
+// Kubernetes object name limit for pathological identities.
+func TestEscalate_LongUsername_ProducesValidName(t *testing.T) {
+	longUser := strings.Repeat("a", 300) + "@layer87.de"
+	cs := fakeCS(t, longUser, []string{"oidc:platform-operator"})
+	var out bytes.Buffer
+
+	require.NoError(t, plugin.Escalate(context.Background(), plugin.EscalateOptions{
+		Role:     "view",
+		Duration: time.Hour,
+		Reason:   "very long identity",
+	}, cs, &out))
+
+	crbs, err := cs.RbacV1().ClusterRoleBindings().List(context.Background(),
+		metav1.ListOptions{LabelSelector: plugin.LabelManaged + "=true"})
+	require.NoError(t, err)
+	require.Len(t, crbs.Items, 1)
+	assert.LessOrEqual(t, len(crbs.Items[0].Name), 253,
+		"generated name must stay within the Kubernetes object name limit")
+}
 
 func TestEscalate_ClusterWide_CreatesCRB(t *testing.T) {
 	cs := fakeCS(t, "eike@layer87.de", []string{"oidc:platform-operator"})
