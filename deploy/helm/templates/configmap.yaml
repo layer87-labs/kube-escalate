@@ -1,0 +1,24 @@
+{{- if .Values.maxDuration }}
+# Publishes the enforced TTL ceiling so clients can display it.
+#
+# Rendered from .Values.maxDuration — the same value that becomes the
+# operator's --max-duration argument — so the two cannot drift. The operator
+# does NOT write this at runtime: that would need `create` on ConfigMaps,
+# widening a ServiceAccount that deliberately holds nothing but what it needs
+# to delete bindings.
+#
+# The name is fixed rather than derived from the release name, because a
+# client on someone's workstation cannot know the release name. Installing two
+# releases of this chart into one namespace would therefore collide — don't.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-escalate-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-escalate.labels" . | nindent 4 }}
+data:
+  # Requests beyond this are not rejected; they are treated as expiring at
+  # CreationTimestamp + maxDuration, with an EscalationClamped event.
+  maxDuration: {{ .Values.maxDuration | quote }}
+{{- end }}

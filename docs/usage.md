@@ -2,10 +2,52 @@
 
 ## Commands
 
+### Targets
+
+Show which roles you are allowed to escalate to.
+
+```bash
+kubectl escalate targets
+
+# Include roles bindable inside a namespace
+kubectl escalate targets --namespace tenant-acme
+```
+
+```
+TARGET          SCOPE     DESCRIPTION
+cluster-admin   cluster   full cluster access — use sparingly
+```
+
+The list comes from a `SelfSubjectRulesReview` — the API server's own
+evaluation of your permissions — so it is correct regardless of how your
+cluster's RBAC is arranged or which group carries the grant. It needs no
+permission beyond what any authenticated user already has for itself.
+
+If it prints **"You may not escalate to any role"**, that is an RBAC question,
+not a kube-escalate one: someone must grant your group the `bind` verb on the
+roles you should be able to request. The most common cause is a group-name
+mismatch — see [install.md](install.md#check-the-group-name--this-is-the-mistake-everyone-makes).
+
+The `DESCRIPTION` column is filled from a `kube-escalate/description`
+annotation on the target role, when present and readable.
+
+The `MAX DURATION` column appears only when the operator publishes its ceiling
+and you may read it — the Helm chart renders a `kube-escalate-config` ConfigMap
+from its `maxDuration` value. If the column is missing, the operator predates
+that chart or you lack `get` on the ConfigMap; use `--operator-namespace` if it
+is not installed in `kube-escalate`.
+
+The value is never guessed. A request beyond the ceiling is **not rejected** —
+it is silently shortened — so a wrong number would let you plan around a
+deadline that will not hold. Watch for an `EscalationClamped` event.
+
+---
+
 ### Escalate (default action)
 
-Create a time-limited privilege escalation. Your identity is resolved from your
-OIDC token via `SelfSubjectReview` — it cannot be supplied or forged via flags.
+Create a time-limited privilege escalation. Your identity is resolved via
+`SelfSubjectReview` from whatever authenticator the API server trusts — it
+cannot be supplied or forged via flags.
 
 ```bash
 # Cluster-wide ClusterRoleBinding
@@ -112,9 +154,18 @@ kubectl escalate revoke --all
 
 ### Kubernetes Events
 
-The operator emits a `Warning/EscalationExpired` event whenever a binding is
-deleted by TTL, and the plugin emits `Warning/EscalationRevoked` on manual
-revocation.
+> Events expire after roughly an hour. For retrospective audit ("who held admin
+> last Tuesday, and why?") ship the operator's structured logs off-cluster —
+> they carry requester, role, scope, reason and duration on every line.
+
+All events come from the **operator**, not the plugin — it decides which one
+applies when it finalizes a binding:
+
+| Reason | Type | When |
+|---|---|---|
+| `EscalationExpired` | Warning | The TTL elapsed and the binding was deleted |
+| `EscalationRevoked` | Normal | The binding was deleted before its TTL |
+| `EscalationClamped` | Warning | The requested TTL exceeded `--max-duration`; the effective expiry is in the message |
 
 ```bash
 # All escalation events across all namespaces, newest last
@@ -139,8 +190,11 @@ REASON:.metadata.annotations.kube-escalate/reason
 ### Prometheus queries
 
 ```promql
-# Active escalations right now
-kube_escalate_active_escalations
+# Active escalations right now.
+# Use max, NOT sum: with more than one replica every pod serves this gauge with
+# the same value (it is counted from cluster state at scrape time, not only by
+# the leader), so summing multiplies it by the replica count.
+max by (user, role, namespace) (kube_escalate_active_escalations)
 
 # Rate of new escalations per minute
 rate(kube_escalate_escalations_total[5m]) * 60
@@ -155,3 +209,34 @@ increase(kube_escalate_revoked_total[1h])
 rate(kube_escalate_duration_seconds_sum[1h])
   / rate(kube_escalate_duration_seconds_count[1h]) / 60
 ```
+
+---
+
+## Two things that surprise people
+
+### Expiry gives no warning
+
+Access ends silently. The next `kubectl` call simply returns `Forbidden`, which
+is disorienting in the middle of a repair.
+
+```bash
+kubectl escalate status    # shows the remaining time
+```
+
+There is no renewal command by design — request a new escalation, with a fresh
+reason, so the audit trail shows a decision rather than a drift.
+
+### Even while escalated, you may not be able to create ordinary RBAC
+
+If your cluster is hardened with the recommended admission policy, that policy
+matches on your **group**, not on your role. Escalating grants you
+`cluster-admin`, but it does not change the groups in your token — so you are
+still constrained: every binding you create must be kube-escalate-managed, carry
+an expiry, and name you as its subject.
+
+This is intentional. The policy is precisely what stops an escalation from being
+converted into permanent access; exempting escalated users would defeat it.
+
+To change RBAC properly, go through your infrastructure-as-code, which runs as
+`system:masters` and is exempt. Someone who does not know this will look in the
+wrong place at three in the morning.

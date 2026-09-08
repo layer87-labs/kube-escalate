@@ -17,7 +17,8 @@ cmd/
   kubectl-escalate/    → Plugin entry point (wiring only)
 internal/
   operator/            → controller-runtime reconciler, Prometheus metrics
-  plugin/              → escalate / status / revoke commands, SelfSubjectReview identity
+  plugin/              → escalate / targets / status / revoke commands,
+                         SelfSubjectReview identity
 deploy/
   Containerfile        → Chainguard static base, no multi-stage build
   helm/                → Helm chart (Deployment, RBAC, PDB, NetworkPolicy, ServiceMonitor)
@@ -116,6 +117,48 @@ scrape time. Do not "simplify" this back into an incremental gauge: creations
 are only counted on a binding's first reconcile, so after any operator
 restart the gauge would resume from zero while escalations are still live and
 then go negative as they expire. See `TestActiveEscalations_CountedFromLiveState`.
+
+### Discovering targets
+`kubectl escalate targets` answers "where may I escalate to?" via
+`SelfSubjectRulesReview` — the API server's own evaluation. Do not replace this
+with reading the requester ClusterRole: that assumes a name, requires a
+permission the requester need not hold, and breaks on aggregation or when the
+grant arrives through a different group. It also deliberately shows no
+max-duration column; the client cannot read the operator's `--max-duration`,
+and a wrong number is worse than none (see issue #9).
+
+## Release artifacts — read before writing install docs
+
+`deploy/helm/Chart.yaml`'s `version`/`appVersion` are **placeholders**. The
+release workflow packages with `helm package --version $VERSION --app-version
+$VERSION` from the relctl-derived version, so the committed values never reach
+the registry. Never quote them as the published version.
+
+Releases ship **plain binaries**, not archives:
+
+```
+kubectl-escalate_<version>_<os>-<arch>[.exe]   +  .bundle  +  .sbom.spdx.json
+operator_<version>_linux-<arch>
+kube-escalate-<version>.tgz                    (Helm chart)
+sha256sum.txt
+```
+
+The `.bundle` files are **cosign** bundles (`cosign sign-blob`), not GitHub
+provenance attestations — `gh attestation verify` fails on them with a 404.
+Verification is `cosign verify-blob --bundle … --certificate-identity-regexp …`.
+
+## This is a public, general-purpose project
+
+Nothing in this repository may describe one organisation's cluster: no cluster
+names, identity-provider or group names, internal registries, or RBAC posture.
+Identity comes from whatever authenticator the API server already validated, so
+never tie documentation or code to a specific IdP. Verification runs against a
+real cluster belong in that organisation's private repositories, not here.
+
+Documentation split, as the maintainer wants it: this repo keeps **only**
+`docs/install.md`, `docs/usage.md` and `docs/architecture.md`. Operator guides,
+hardening, and anything longer belong on the docs site
+(<https://layer87-labs.github.io/docs/>), linked from here.
 
 ## Code rules
 
