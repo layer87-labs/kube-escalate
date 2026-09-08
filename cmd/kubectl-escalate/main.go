@@ -83,6 +83,7 @@ server populates it from your validated OIDC token and it cannot be forged.`,
 
 	cmd.AddCommand(newStatusCmd(&kubeconfig))
 	cmd.AddCommand(newRevokeCmd(&kubeconfig))
+	cmd.AddCommand(newTargetsCmd(&kubeconfig))
 
 	return cmd
 }
@@ -109,6 +110,43 @@ func newStatusCmd(kubeconfig *string) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&opts.All, "all", false, "Show escalations for all users")
+	return cmd
+}
+
+func newTargetsCmd(kubeconfig *string) *cobra.Command {
+	var opts plugin.TargetsOptions
+
+	cmd := &cobra.Command{
+		Use:     "targets",
+		Aliases: []string{"list"},
+		Short:   "Show which roles you may escalate to",
+		Long: `Show the roles you are permitted to escalate to.
+
+The list comes from a SelfSubjectRulesReview — the API server's own
+evaluation of your permissions — so it is correct regardless of how your
+cluster's RBAC is put together or which group carries the grant. It needs no
+permission beyond what any authenticated user already has for itself.
+
+The maximum duration is intentionally not shown: it is enforced by the
+operator (--max-duration) and the client cannot read it. A longer request is
+not rejected, it is silently shortened, so a displayed value that did not
+match the enforced one would be worse than none.`,
+		Example: `  # Cluster-wide targets
+  kubectl escalate targets
+
+  # Include targets bindable inside a namespace
+  kubectl escalate targets --namespace tenant-acme`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cs, err := plugin.BuildClient(*kubeconfig)
+			if err != nil {
+				return err
+			}
+			return plugin.Targets(cmd.Context(), opts, cs, cmd.OutOrStdout())
+		},
+	}
+
+	cmd.Flags().StringVarP(&opts.Namespace, "namespace", "n", "",
+		"Also show roles bindable within this namespace")
 	return cmd
 }
 
