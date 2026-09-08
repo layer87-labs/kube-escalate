@@ -137,7 +137,7 @@ then go negative as they expire. See `TestActiveEscalations_CountedFromLiveState
   RBAC privilege-escalation rules (`bind`/`escalate` verbs, or already holding
   the target role's permissions) on the caller's existing grants — see
   `docs/architecture.md`. Scoping *which* roles a given group may request is an
-  IaC/RBAC concern (`resourceNames` on ClusterRoles, Zitadel group mapping), not
+  IaC/RBAC concern (`resourceNames` on ClusterRoles, OIDC group mapping), not
   something this operator or plugin validates.
 - **Requested TTL is capped, not validated per-role.** The operator clamps any
   `expires-at` beyond `--max-duration` (default `24h`, see `EscalationReconciler.MaxDuration`)
@@ -147,7 +147,9 @@ then go negative as they expire. See `TestActiveEscalations_CountedFromLiveState
 ## Out of scope (v1)
 
 - Multi-person approval workflows
-- Zitadel API integration (identity comes from the OIDC token via the API server)
+- Identity-provider API integration — identity comes from the token the API
+  server already validated, via SelfSubjectReview; kube-escalate never talks to
+  an IdP itself and is not tied to any particular one
 - Web UI or dashboard
 - Krew publication (after first stable release)
 - Namespace isolation via Kyverno (separate concern)
