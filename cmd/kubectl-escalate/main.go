@@ -127,10 +127,11 @@ evaluation of your permissions — so it is correct regardless of how your
 cluster's RBAC is put together or which group carries the grant. It needs no
 permission beyond what any authenticated user already has for itself.
 
-The maximum duration is intentionally not shown: it is enforced by the
-operator (--max-duration) and the client cannot read it. A longer request is
-not rejected, it is silently shortened, so a displayed value that did not
-match the enforced one would be worse than none.`,
+The maximum duration is shown only when the operator publishes it (a
+ConfigMap rendered by the Helm chart) and you may read it. Otherwise the
+column is dropped rather than guessed: a request beyond the ceiling is
+silently shortened rather than rejected, so a wrong number would let you plan
+around a deadline that will not hold.`,
 		Example: `  # Cluster-wide targets
   kubectl escalate targets
 
@@ -147,6 +148,9 @@ match the enforced one would be worse than none.`,
 
 	cmd.Flags().StringVarP(&opts.Namespace, "namespace", "n", "",
 		"Also show roles bindable within this namespace")
+	cmd.Flags().StringVar(&opts.OperatorNamespace, "operator-namespace",
+		plugin.DefaultOperatorNamespace,
+		"Namespace the operator is installed in, used to read its published settings")
 	return cmd
 }
 

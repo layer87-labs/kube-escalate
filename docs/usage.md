@@ -31,11 +31,15 @@ mismatch — see [install.md](install.md#check-the-group-name--this-is-the-mista
 The `DESCRIPTION` column is filled from a `kube-escalate/description`
 annotation on the target role, when present and readable.
 
-**No maximum duration is shown.** The ceiling is enforced by the operator
-(`--max-duration`) and the client has no way to read it. Displaying a guessed
-value would be worse than showing none: a request beyond the ceiling is not
-rejected, it is silently shortened, so you would plan around a number that will
-not hold. Watch for an `EscalationClamped` event instead.
+The `MAX DURATION` column appears only when the operator publishes its ceiling
+and you may read it — the Helm chart renders a `kube-escalate-config` ConfigMap
+from its `maxDuration` value. If the column is missing, the operator predates
+that chart or you lack `get` on the ConfigMap; use `--operator-namespace` if it
+is not installed in `kube-escalate`.
+
+The value is never guessed. A request beyond the ceiling is **not rejected** —
+it is silently shortened — so a wrong number would let you plan around a
+deadline that will not hold. Watch for an `EscalationClamped` event.
 
 ---
 

@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	authzv1 "k8s.io/api/authorization/v1"
+	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -208,4 +210,75 @@ func TestTargets_EvaluationErrorIsSurfaced(t *testing.T) {
 	assert.Contains(t, out.String(), "warning")
 	assert.Contains(t, out.String(), "some authorizer failed")
 	assert.Contains(t, out.String(), "cluster-admin", "partial results are still shown")
+}
+
+// ─── max-duration column (issue #9) ──────────────────────────────────────────
+
+func maxDurationCM(ns, value string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: plugin.ConfigMapName, Namespace: ns},
+		Data:       map[string]string{plugin.ConfigKeyMaxDuration: value},
+	}
+}
+
+// TestTargets_ShowsMaxDurationWhenPublished — the column appears only when the
+// operator actually published the value.
+func TestTargets_ShowsMaxDurationWhenPublished(t *testing.T) {
+	cs := rulesCS(t, []authzv1.ResourceRule{bindRule("clusterroles", "cluster-admin")},
+		maxDurationCM(plugin.DefaultOperatorNamespace, "8h"))
+	var out bytes.Buffer
+
+	require.NoError(t, plugin.Targets(context.Background(), plugin.TargetsOptions{}, cs, &out))
+
+	assert.Contains(t, out.String(), "MAX DURATION")
+	assert.Contains(t, out.String(), "8h")
+	assert.Contains(t, out.String(), "are not rejected")
+}
+
+// TestTargets_OmitsMaxDurationWhenAbsent covers an older chart that does not
+// render the ConfigMap: the command must still work, without the column.
+func TestTargets_OmitsMaxDurationWhenAbsent(t *testing.T) {
+	cs := rulesCS(t, []authzv1.ResourceRule{bindRule("clusterroles", "cluster-admin")})
+	var out bytes.Buffer
+
+	require.NoError(t, plugin.Targets(context.Background(), plugin.TargetsOptions{}, cs, &out))
+
+	assert.NotContains(t, out.String(), "MAX DURATION")
+	assert.Contains(t, out.String(), "cluster-admin", "the command still works")
+}
+
+// TestTargets_OmitsMaxDurationWhenMalformed — a value that does not parse must
+// drop the column rather than print something misleading.
+func TestTargets_OmitsMaxDurationWhenMalformed(t *testing.T) {
+	cs := rulesCS(t, []authzv1.ResourceRule{bindRule("clusterroles", "cluster-admin")},
+		maxDurationCM(plugin.DefaultOperatorNamespace, "eight hours"))
+	var out bytes.Buffer
+
+	require.NoError(t, plugin.Targets(context.Background(), plugin.TargetsOptions{}, cs, &out))
+
+	assert.NotContains(t, out.String(), "MAX DURATION")
+	assert.NotContains(t, out.String(), "eight hours")
+}
+
+// TestLookupMaxDuration_UnreadableIsNotAnError — a requester need not hold get
+// on the ConfigMap, and that must never fail a command.
+func TestLookupMaxDuration_UnreadableIsNotAnError(t *testing.T) {
+	cs := k8sfake.NewSimpleClientset()
+	cs.PrependReactor("get", "configmaps",
+		func(_ k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, assert.AnError
+		},
+	)
+
+	_, ok := plugin.LookupMaxDuration(context.Background(), cs, "")
+	assert.False(t, ok, "an unreadable ConfigMap yields no value, not an error")
+}
+
+// TestLookupMaxDuration_CustomNamespace covers --operator-namespace.
+func TestLookupMaxDuration_CustomNamespace(t *testing.T) {
+	cs := k8sfake.NewSimpleClientset(maxDurationCM("platform-tools", "2h30m"))
+
+	d, ok := plugin.LookupMaxDuration(context.Background(), cs, "platform-tools")
+	require.True(t, ok)
+	assert.Equal(t, 150*time.Minute, d)
 }

@@ -18,6 +18,10 @@ type TargetsOptions struct {
 	// Namespace scopes the query to namespaced Role targets. Empty asks about
 	// cluster-wide ClusterRole targets only.
 	Namespace string
+
+	// OperatorNamespace is where the operator's published configuration is
+	// read from. Empty means DefaultOperatorNamespace.
+	OperatorNamespace string
 }
 
 // Target is one role the caller is permitted to escalate to.
@@ -105,12 +109,29 @@ func Targets(ctx context.Context, opts TargetsOptions, cs kubernetes.Interface, 
 
 	annotateDescriptions(ctx, cs, targets)
 
+	// The ceiling is shown only when it can actually be established. When it
+	// cannot, the column is dropped rather than filled with a guess — a
+	// request beyond the ceiling is silently shortened, not rejected, so a
+	// wrong number would let someone plan around a deadline that will not
+	// hold.
+	maxDuration, haveMax := LookupMaxDuration(ctx, cs, opts.OperatorNamespace)
+
 	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "TARGET\tSCOPE\tDESCRIPTION"); err != nil {
+	header := "TARGET\tSCOPE\tDESCRIPTION"
+	if haveMax {
+		header = "TARGET\tSCOPE\tMAX DURATION\tDESCRIPTION"
+	}
+	if _, err := fmt.Fprintln(tw, header); err != nil {
 		return fmt.Errorf("targets: write header: %w", err)
 	}
 	for _, t := range targets {
-		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\n", t.Name, t.Scope, t.Description); err != nil {
+		var err error
+		if haveMax {
+			_, err = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", t.Name, t.Scope, maxDuration, t.Description)
+		} else {
+			_, err = fmt.Fprintf(tw, "%s\t%s\t%s\n", t.Name, t.Scope, t.Description)
+		}
+		if err != nil {
 			return fmt.Errorf("targets: write row: %w", err)
 		}
 	}
@@ -118,10 +139,10 @@ func Targets(ctx context.Context, opts TargetsOptions, cs kubernetes.Interface, 
 		return fmt.Errorf("targets: flush output: %w", err)
 	}
 
-	// The enforced TTL ceiling lives in the operator's --max-duration and is
-	// deliberately not shown: the client has no way to read it, and a
-	// displayed duration that does not match the enforced one would let
-	// someone plan around a number that will not hold.
+	if haveMax {
+		fmt.Fprintf(w,
+			"\nRequests longer than %s are not rejected — they are shortened to it.\n", maxDuration)
+	}
 	fmt.Fprintln(w, "\nEscalate with:  kubectl escalate --to <TARGET> --duration <d> --reason <why>")
 	return nil
 }

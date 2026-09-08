@@ -28,7 +28,7 @@ helm install kube-escalate oci://ghcr.io/layer87-labs/charts/kube-escalate \
 
 | Value | Default | Meaning |
 |---|---|---|
-| `maxDuration` | `24h` | Ceiling on any requested TTL. A longer request is **not rejected** — it is treated as expiring at `CreationTimestamp + maxDuration` and an `EscalationClamped` event is emitted. |
+| `maxDuration` | `24h` | Ceiling on any requested TTL. A longer request is **not rejected** — it is treated as expiring at `CreationTimestamp + maxDuration` and an `EscalationClamped` event is emitted. Also rendered into a `kube-escalate-config` ConfigMap so `kubectl escalate targets` can display it. Setting `--max-duration` through `extraArgs` instead bypasses that and makes the displayed value wrong — use this value. |
 | `replicaCount` | `1` | Set >1 together with `leaderElection.enabled=true`. |
 | `metrics.serviceMonitor.enabled` | `false` | Without this the `/metrics` endpoint is served but never scraped. |
 | `networkPolicy.enabled` | `false` | Restricts operator ingress/egress. `networkPolicy.apiServerPort` must match your cluster (commonly 6443, or 443 on managed clusters). |
@@ -161,6 +161,13 @@ rules:
   - apiGroups: ["authorization.k8s.io"]
     resources: ["selfsubjectrulesreviews"]
     verbs: ["create"]
+
+  # Read the operator's published ceiling, so "targets" can show it.
+  # Optional: without it the column is simply omitted.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["kube-escalate-config"]
+    verbs: ["get"]
 
   # Create escalations, list and revoke one's own.
   - apiGroups: ["rbac.authorization.k8s.io"]
