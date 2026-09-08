@@ -2,28 +2,21 @@
 
 ## Reporting a vulnerability
 
-**Please do not open a public issue for security vulnerabilities.**
+**Reporting process, contact address and response times are defined
+organization-wide:** see the [layer87-labs security policy](https://github.com/layer87-labs/.github/blob/main/SECURITY.md).
 
-Report privately via [GitHub Security Advisories](https://github.com/layer87-labs/kube-escalate/security/advisories/new),
-or by email to **security@layer87.de**.
+In short: do not open a public issue — report to **security@layer87.de** or via
+[GitHub Security Advisories](https://github.com/layer87-labs/kube-escalate/security/advisories/new).
 
-Please include:
+This file exists only to add what is specific to kube-escalate: **what counts
+as a vulnerability here**. For a Just-in-Time privilege escalation tool that
+boundary is easy to misjudge in both directions, so it is written down.
 
-- affected version (`kubectl escalate --version`, operator image tag, chart version)
-- Kubernetes version and distribution
-- a description of the impact — what an attacker gains
-- reproduction steps, ideally a minimal manifest or command sequence
+When reporting, please include the affected version (`kubectl escalate
+--version`, operator image tag, chart version), your Kubernetes version and
+distribution, and what an attacker gains.
 
-We aim to acknowledge within 3 working days and to ship a fix or a documented
-mitigation for confirmed, in-scope issues within 30 days. We will credit you in
-the advisory unless you ask us not to.
-
-## Supported versions
-
-Only the latest minor release receives security fixes. This project has not yet
-reached 1.0; expect to upgrade forward rather than receiving backports.
-
-## Threat model — please read before reporting
+## Threat model
 
 kube-escalate addresses **standing privilege and accident**: credentials that
 hold elevated access around the clock and get stolen, reused in a script, or
@@ -43,9 +36,9 @@ tool.
 See [docs/architecture.md](docs/architecture.md#threat-model--what-this-does-and-does-not-protect-against)
 for the full discussion.
 
-### Out of scope
+## Out of scope
 
-The following are known and documented properties, not vulnerabilities:
+Known and documented properties, not vulnerabilities:
 
 - An escalated `cluster-admin` making their access permanent (see above).
 - Escalating to a role the requester was granted `bind` permission on. **Who
@@ -64,7 +57,7 @@ The following are known and documented properties, not vulnerabilities:
   RBAC escalation check); the `EscalationClamped` event carries the effective
   expiry.
 
-### In scope — we want to hear about these
+## In scope — we want to hear about these
 
 - Obtaining an escalation to a role you were **not** granted `bind` on.
 - Escalating as, or on behalf of, a **different** identity than your own.

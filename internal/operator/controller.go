@@ -217,11 +217,19 @@ func (r *EscalationReconciler) reconcileBinding(
 			role,
 			scope,
 		)
+		// These log lines are the durable audit record. Kubernetes Events carry
+		// the same information but expire within the hour, and the annotations
+		// vanish with the object, so anything an auditor needs later has to be
+		// on the log line itself — including the requester's stated reason.
 		logger.Info("escalation registered",
 			"requester", obj.GetAnnotations()[AnnotationRequester],
 			"role", role,
 			"scope", scope,
+			"reason", obj.GetAnnotations()[AnnotationReason],
+			"groups", obj.GetAnnotations()[AnnotationOriginalGroups],
+			"requested_expires_at", requestedExpiresAt.Format(time.RFC3339),
 			"expires_at", expiresAt.Format(time.RFC3339),
+			"clamped", clamped,
 		)
 		// Return empty Result — the Update above triggers a watch event that
 		// re-enqueues the object without needing an explicit Requeue.
@@ -301,13 +309,17 @@ func (r *EscalationReconciler) handleFinalization(
 	}
 
 	if time.Now().UTC().After(expiresAt) {
-		logger.Info("finalizing expired escalation", "requester", requester, "role", role, "scope", scope)
+		logger.Info("finalizing expired escalation",
+			"requester", requester, "role", role, "scope", scope,
+			"reason", reason, "duration_seconds", duration)
 		r.recorder.Eventf(obj, nil, corev1.EventTypeWarning, EventReasonExpired,
 			"Expire", "Escalation for %s to role %s (scope=%s, reason=%q) has expired after %.0fs",
 			requester, role, scope, reason, duration)
 		Metrics.RecordExpiry(requester, role, scope, duration)
 	} else {
-		logger.Info("finalizing manually revoked escalation", "requester", requester, "role", role, "scope", scope)
+		logger.Info("finalizing manually revoked escalation",
+			"requester", requester, "role", role, "scope", scope,
+			"reason", reason, "duration_seconds", duration)
 		r.recorder.Eventf(obj, nil, corev1.EventTypeNormal, EventReasonRevoked,
 			"Revoke", "Escalation for %s to role %s (scope=%s, reason=%q) was manually revoked after %.0fs",
 			requester, role, scope, reason, duration)
