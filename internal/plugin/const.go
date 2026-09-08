@@ -17,4 +17,9 @@ const (
 
 	// AnnotationOriginalGroups holds the requester's OIDC group membership at request time.
 	AnnotationOriginalGroups = "kube-escalate/original-groups"
+
+	// AnnotationDescription may be set by a cluster operator on a target
+	// ClusterRole to explain, in one line, what escalating to it grants.
+	// Read by "kubectl escalate targets"; optional everywhere.
+	AnnotationDescription = "kube-escalate/description"
 )
