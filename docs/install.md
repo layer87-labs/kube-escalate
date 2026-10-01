@@ -127,6 +127,25 @@ Expected output: `Verified OK`.
 
 Each binary also ships an SPDX SBOM (`*.sbom.spdx.json`).
 
+### Verifying the container image signature (optional)
+
+The operator image is signed with [cosign](https://github.com/sigstore/cosign)
+keyless via GitHub OIDC. Resolve the digest and verify it against the exact
+release workflow identity:
+
+```bash
+IMAGE=ghcr.io/layer87-labs/kube-escalate
+DIGEST=$(docker buildx imagetools inspect "$IMAGE:<version>" --format '{{json .Manifest}}' | jq -r .digest)
+
+cosign verify \
+  --certificate-identity 'https://github.com/layer87-labs/kube-escalate/.github/workflows/release.yaml@refs/heads/main' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  "$IMAGE@$DIGEST"
+```
+
+Use the digest in your deployment (`image@sha256:...`) so what you verified is
+what runs.
+
 ---
 
 ## RBAC prerequisites
