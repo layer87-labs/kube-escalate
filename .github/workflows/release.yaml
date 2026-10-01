@@ -191,6 +191,19 @@ jobs:
             "ghcr.io/layer87-labs/kube-escalate:latest-amd64" \
             "ghcr.io/layer87-labs/kube-escalate:latest-arm64"
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign multi-arch image (keyless via OIDC, by digest)
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          IMAGE="ghcr.io/layer87-labs/kube-escalate"
+          DIGEST="$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --format '{{json .Manifest}}' | jq -r .digest)"
+          test -n "${DIGEST}"
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          echo "Signed ${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+
   # ── Phase 2d: Helm chart ─────────────────────────────────────────────────────
   helm-publish:
     name: Publish Helm Chart
