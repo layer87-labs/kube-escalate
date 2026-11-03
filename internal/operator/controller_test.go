@@ -139,7 +139,7 @@ func drainEvent(t *testing.T, recorder *kevents.FakeRecorder) string {
 
 func TestReconcile_ExpiredCRB_FullLifecycle(t *testing.T) {
 	expiredAt := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
-	crb := managedCRB("kube-escalate-expired-001", "eike@layer87.de", "cluster-admin", expiredAt)
+	crb := managedCRB("kube-escalate-expired-001", "alice@example.org", "cluster-admin", expiredAt)
 
 	reconciler, recorder, c := newTestSetup(t, crb)
 	ctx := context.Background()
@@ -170,14 +170,14 @@ func TestReconcile_ExpiredCRB_FullLifecycle(t *testing.T) {
 
 	event := drainEvent(t, recorder)
 	assert.Contains(t, event, operator.EventReasonExpired)
-	assert.Contains(t, event, "eike@layer87.de")
+	assert.Contains(t, event, "alice@example.org")
 }
 
 // ─── lifecycle: active → requeue ─────────────────────────────────────────────
 
 func TestReconcile_ActiveCRB_RequeuesAfterFinalizerAdded(t *testing.T) {
 	futureAt := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
-	crb := managedCRB("kube-escalate-active-002", "eike@layer87.de", "cluster-admin", futureAt)
+	crb := managedCRB("kube-escalate-active-002", "alice@example.org", "cluster-admin", futureAt)
 
 	reconciler, _, c := newTestSetup(t, crb)
 	ctx := context.Background()
@@ -206,7 +206,7 @@ func TestReconcile_ActiveCRB_RequeuesAfterFinalizerAdded(t *testing.T) {
 
 func TestReconcile_ManualRevocation_EmitsRevokedEvent(t *testing.T) {
 	futureAt := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
-	crb := managedCRB("kube-escalate-revoke-003", "eike@layer87.de", "cluster-admin", futureAt)
+	crb := managedCRB("kube-escalate-revoke-003", "alice@example.org", "cluster-admin", futureAt)
 
 	reconciler, recorder, c := newTestSetup(t, crb)
 	ctx := context.Background()
@@ -238,7 +238,7 @@ func TestReconcile_ManualRevocation_EmitsRevokedEvent(t *testing.T) {
 
 	event := drainEvent(t, recorder)
 	assert.Contains(t, event, operator.EventReasonRevoked)
-	assert.Contains(t, event, "eike@layer87.de")
+	assert.Contains(t, event, "alice@example.org")
 }
 
 // ─── edge cases ──────────────────────────────────────────────────────────────
@@ -278,7 +278,7 @@ func TestReconcile_CRBWithoutExpiresAt_IsSkipped(t *testing.T) {
 }
 
 func TestReconcile_MalformedExpiresAt_ReturnsError(t *testing.T) {
-	crb := managedCRB("malformed-expiry", "eike@layer87.de", "cluster-admin", "not-a-timestamp")
+	crb := managedCRB("malformed-expiry", "alice@example.org", "cluster-admin", "not-a-timestamp")
 
 	reconciler, _, _ := newTestSetup(t, crb)
 
@@ -292,7 +292,7 @@ func TestReconcile_MalformedExpiresAt_ReturnsError(t *testing.T) {
 
 func TestReconcile_ExpiredRB_FullLifecycle(t *testing.T) {
 	expiredAt := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
-	rb := managedRB("tenant-acme", "kube-escalate-expired-rb-001", "eike@layer87.de", "editor", expiredAt)
+	rb := managedRB("tenant-acme", "kube-escalate-expired-rb-001", "alice@example.org", "editor", expiredAt)
 
 	reconciler, recorder, c := newTestSetup(t, rb)
 	ctx := context.Background()
@@ -318,12 +318,12 @@ func TestReconcile_ExpiredRB_FullLifecycle(t *testing.T) {
 
 	event := drainEvent(t, recorder)
 	assert.Contains(t, event, operator.EventReasonExpired)
-	assert.Contains(t, event, "eike@layer87.de")
+	assert.Contains(t, event, "alice@example.org")
 }
 
 func TestReconcile_ActiveRB_RequeuesAfterFinalizerAdded(t *testing.T) {
 	futureAt := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
-	rb := managedRB("tenant-acme", "kube-escalate-active-rb-002", "eike@layer87.de", "editor", futureAt)
+	rb := managedRB("tenant-acme", "kube-escalate-active-rb-002", "alice@example.org", "editor", futureAt)
 
 	reconciler, _, c := newTestSetup(t, rb)
 	ctx := context.Background()
@@ -345,7 +345,7 @@ func TestReconcile_ActiveRB_RequeuesAfterFinalizerAdded(t *testing.T) {
 
 func TestReconcile_RequestBeyondMaxDuration_IsClamped(t *testing.T) {
 	requestedAt := time.Now().UTC().Add(1000 * time.Hour).Format(time.RFC3339)
-	crb := managedCRB("kube-escalate-toolong-004", "eike@layer87.de", "cluster-admin", requestedAt)
+	crb := managedCRB("kube-escalate-toolong-004", "alice@example.org", "cluster-admin", requestedAt)
 
 	reconciler, recorder, c := newTestSetup(t, crb)
 	reconciler.MaxDuration = 1 * time.Hour
@@ -357,8 +357,7 @@ func TestReconcile_RequestBeyondMaxDuration_IsClamped(t *testing.T) {
 	// comment: any Update that also touches an unrelated annotation is
 	// validated by the API server as if granting the binding's RoleRef, and
 	// gets rejected when the operator doesn't hold that role's own
-	// permissions — reproduced live in production, see
-	// docs/testprotocol-2026-08-26.md).
+	// permissions — reproduced against a real cluster).
 	_, err := reconciler.Reconcile(ctx, req)
 	require.NoError(t, err)
 
@@ -383,7 +382,7 @@ func TestReconcile_RequestBeyondMaxDuration_IsClamped(t *testing.T) {
 
 func TestReconcile_RequestWithinMaxDuration_IsUnchanged(t *testing.T) {
 	requestedAt := time.Now().UTC().Add(30 * time.Minute).Format(time.RFC3339)
-	crb := managedCRB("kube-escalate-fine-005", "eike@layer87.de", "view", requestedAt)
+	crb := managedCRB("kube-escalate-fine-005", "alice@example.org", "view", requestedAt)
 
 	reconciler, recorder, c := newTestSetup(t, crb)
 	reconciler.MaxDuration = 1 * time.Hour

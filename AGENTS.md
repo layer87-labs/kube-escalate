@@ -84,7 +84,7 @@ labels:
   kube-escalate/managed: "true"
 annotations:
   kube-escalate/expires-at:      "2026-05-24T16:00:00Z"   # RFC3339
-  kube-escalate/requester:       "eike@layer87.de"         # from SelfSubjectReview
+  kube-escalate/requester:       "alice@example.org"       # from SelfSubjectReview
   kube-escalate/reason:          "CNPG hotfix"
   kube-escalate/original-groups: "oidc:platform-operator"
 ```

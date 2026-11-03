@@ -46,7 +46,7 @@ func getSelfIdentity(ctx context.Context, cs kubernetes.Interface) (username str
 
 var nonAlphanumRE = regexp.MustCompile(`[^a-z0-9]+`)
 
-// sanitizeForName converts an arbitrary string (e.g. "eike@layer87.de") into a
+// sanitizeForName converts an arbitrary string (e.g. "alice@example.org") into a
 // segment safe for use in a Kubernetes resource name.
 func sanitizeForName(s string) string {
 	clean := nonAlphanumRE.ReplaceAllString(strings.ToLower(s), "-")
