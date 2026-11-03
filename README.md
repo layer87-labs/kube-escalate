@@ -65,7 +65,7 @@ of its own. Details: [docs/architecture.md](docs/architecture.md).
 
 ## Quick start
 
-You need a cluster whose API server serves the `SelfSubjectReview` API, Helm 3 with OCI support, and an
+You need Kubernetes 1.28 or newer (the `authentication.k8s.io/v1` `SelfSubjectReview` API is GA there; the plugin has no fallback), Helm 3 with OCI support, and an
 authenticator the API server trusts (OIDC or client certificates).
 
 **1. Install the operator.** Installing it grants nobody anything; it only enforces expiry.
@@ -80,10 +80,10 @@ helm install kube-escalate oci://ghcr.io/layer87-labs/charts/kube-escalate \
 [docs/install.md](docs/install.md#rbac-prerequisites).
 
 **3. Install the plugin** on each workstation (Linux amd64 shown; releases ship plain binaries and a
-`sha256sum.txt`, tags are plain versions such as `0.6.2`):
+`sha256sum.txt`, tags are plain versions such as `0.6.3`):
 
 ```bash
-VERSION=0.6.2   # see https://github.com/layer87-labs/kube-escalate/releases/latest
+VERSION=0.6.3   # see https://github.com/layer87-labs/kube-escalate/releases/latest
 gh release download "$VERSION" --repo layer87-labs/kube-escalate \
   --pattern "kubectl-escalate_${VERSION}_linux-amd64" --pattern 'sha256sum.txt'
 grep "kubectl-escalate_${VERSION}_linux-amd64$" sha256sum.txt | sha256sum -c -

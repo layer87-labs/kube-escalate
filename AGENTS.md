@@ -69,7 +69,9 @@ When writing or modifying workflows, read `.github/workflows/ci.yaml` and
 ## Core design decisions
 
 ### Identity (immutable)
-The plugin calls `SelfSubjectReview` to resolve the caller's identity.
+The plugin calls `SelfSubjectReview` (`authentication.k8s.io/v1`, GA in
+Kubernetes 1.28, no fallback to older API versions) to resolve the caller's
+identity, so 1.28 is the minimum cluster version.
 The username and groups are set by the API server from the validated OIDC token.
 **Never read identity from CLI flags.**
 
@@ -123,9 +125,14 @@ then go negative as they expire. See `TestActiveEscalations_CountedFromLiveState
 `SelfSubjectRulesReview` — the API server's own evaluation. Do not replace this
 with reading the requester ClusterRole: that assumes a name, requires a
 permission the requester need not hold, and breaks on aggregation or when the
-grant arrives through a different group. It also deliberately shows no
-max-duration column; the client cannot read the operator's `--max-duration`,
-and a wrong number is worse than none (see issue #9).
+grant arrives through a different group. The client cannot read the
+operator's `--max-duration` flag, so the `MAX DURATION` column is shown only
+when the value can be established: the Helm chart renders it into the
+`kube-escalate-config` ConfigMap (key `maxDuration`, in `--operator-namespace`,
+default `kube-escalate`), and the column appears when that ConfigMap exists, is
+readable by the caller and holds a valid duration. Otherwise the column is
+omitted rather than guessed, because a wrong number is worse than none (see
+issue #9; `LookupMaxDuration`).
 
 ## Release artifacts — read before writing install docs
 
@@ -171,7 +178,10 @@ hardening, and anything longer belong on the docs site
 - No secrets in code or Git.
 - All exported symbols must have GoDoc comments.
 - Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`
-- Feature branches: `feature/<name>` — never commit directly to `main`.
+- Branches off `main`, never commit directly to `main`. The branch prefix of the
+  merged pull request sets the release version (`.relctl.yaml`, SemVer):
+  `fix/` patch, `feat/` minor, `major/` major (see the relctl documentation for
+  other prefixes). Squash merge only.
 
 ## Known limitations (v1)
 
