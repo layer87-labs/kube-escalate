@@ -10,7 +10,11 @@ Three things have to be in place, and only the first is automatic:
 
 ## Prerequisites
 
-- Kubernetes **1.26+** (1.30+ if you want the admission-policy hardening)
+- Kubernetes **1.28+**. The plugin resolves your identity through the
+  `authentication.k8s.io/v1` `SelfSubjectReview` API, which became GA in 1.28.
+  There is no fallback to the beta or alpha versions of that API. The operator
+  itself uses only core RBAC, Event and Lease APIs. (1.30+ if you want the
+  admission-policy hardening.)
 - An authenticator the API server trusts, if you want group-based grants:
   any OIDC provider, or client certificates
 - Helm 3 with OCI support
@@ -55,7 +59,7 @@ as `kubectl escalate`.
 ### Linux — amd64
 
 ```bash
-VERSION=0.5.0
+VERSION=0.6.3
 mkdir -p ~/.local/bin
 
 gh release download "$VERSION" --repo layer87-labs/kube-escalate \

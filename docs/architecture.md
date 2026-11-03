@@ -75,7 +75,7 @@ flowchart LR
 | **Least-privilege operator** | ClusterRole grants only `get/list/watch/update/patch/delete` on `clusterrolebindings` and `rolebindings` (update/patch needed for the cleanup finalizer) — the operator can never *create* a binding |
 | **TTL ceiling** | The operator clamps any requested `expires-at` beyond `--max-duration` (default `24h`) on first reconcile — enforced server-side even though there is no admission webhook |
 | **No admission webhook** | No availability dependency on the operator path; if the operator restarts, existing bindings remain until it reconciles again |
-| **No CRD** | Uses standard `rbac.authorization.k8s.io/v1` objects — works on any Kubernetes 1.26+ cluster without CRD installation |
+| **No CRD** | Uses standard `rbac.authorization.k8s.io/v1` objects — works without CRD installation; the plugin needs the `authentication.k8s.io/v1` `SelfSubjectReview` API, so Kubernetes 1.28+ (GA there, no fallback to older API versions) |
 | **No database** | All state lives in Kubernetes etcd; no external store to secure or back up |
 | **Audit trail** | Every expiry and revocation emits a Kubernetes Event; requester identity and reason are stored as annotations on the binding itself |
 
