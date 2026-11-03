@@ -35,10 +35,13 @@ helm install kube-escalate oci://ghcr.io/layer87-labs/charts/kube-escalate \
 | `leaderElection.enabled` | `true` | Required for more than one replica. |
 
 The operator's own permissions are deliberately small — `get/list/watch/update/patch/delete`
-on `clusterrolebindings` and `rolebindings`, events, and its leader-election
-lease. **It holds no `create` on bindings and never reads Secrets**, so it
-cannot grant permissions, only remove them. See
-[`deploy/helm/templates/clusterrole.yaml`](../deploy/helm/templates/clusterrole.yaml).
+on `clusterrolebindings` and `rolebindings`, create/patch on events, and
+get/create/update on its leader-election lease (a namespaced `Role` in the
+release namespace, only when `leaderElection.enabled`). **It holds no `create`
+on bindings and never reads Secrets**, so it cannot grant permissions, only
+remove them. See
+[`clusterrole.yaml`](../deploy/helm/templates/clusterrole.yaml) and
+[`role.yaml`](../deploy/helm/templates/role.yaml).
 
 ---
 
