@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+
+  # Base image of the operator container (deploy/Containerfile).
+  - package-ecosystem: docker
+    directory: /deploy
+    target-branch: main
+    schedule:
+      interval: weekly
