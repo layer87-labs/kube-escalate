@@ -47,7 +47,7 @@ jobs:
           - {goos: darwin,  goarch: arm64}
           - {goos: windows, goarch: amd64}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v6
         with:
@@ -67,7 +67,7 @@ jobs:
     needs: [generate-build-infos]
     if: ${{ !cancelled() && (needs.generate-build-infos.result == 'success' || needs.generate-build-infos.result == 'skipped') }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v6
         with:
@@ -98,7 +98,7 @@ jobs:
     needs: [generate-build-infos]
     if: ${{ !cancelled() && (needs.generate-build-infos.result == 'success' || needs.generate-build-infos.result == 'skipped') }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: azure/setup-helm@v4
 

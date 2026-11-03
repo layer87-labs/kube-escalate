@@ -48,7 +48,7 @@ jobs:
           - {binary: kubectl-escalate, goos: windows, goarch: amd64, suffix: windows-amd64, ext: .exe}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -139,7 +139,7 @@ jobs:
     needs: [create-release, build]
     if: needs.create-release.outputs.release-id != ''
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download operator amd64 artifact
         uses: actions/download-artifact@v8
@@ -222,7 +222,7 @@ jobs:
     needs: [create-release]
     if: needs.create-release.outputs.release-id != ''
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: azure/setup-helm@v4
 
@@ -258,7 +258,7 @@ jobs:
     if: needs.create-release.outputs.release-id != ''
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download all artifacts
         uses: actions/download-artifact@v8
