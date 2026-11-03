@@ -180,8 +180,8 @@ hardening, and anything longer belong on the docs site
 - Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`
 - Branches off `main`, never commit directly to `main`. The branch prefix of the
   merged pull request sets the release version (`.relctl.yaml`, SemVer):
-  `fix/` patch, `feat/` minor, `major/` major; other prefixes such as `chore/`,
-  `docs/` and `ci/` follow relctl's defaults. Squash merge only.
+  `fix/` patch, `feat/` minor, `major/` major (see the relctl documentation for
+  other prefixes). Squash merge only.
 
 ## Known limitations (v1)
 
