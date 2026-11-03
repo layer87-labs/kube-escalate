@@ -5,17 +5,25 @@ on:
     branches: [main]
     paths-ignore:
       - "docs/**"
+      - "assets/**"
       - "*.md"
 
 permissions:
-  contents: write  # create GitHub release + upload assets
-  packages: write  # push to GHCR
-  id-token: write  # cosign keyless OIDC signing
+  contents: write       # create GitHub release + upload assets
+  packages: write       # push to GHCR
+  id-token: write       # cosign keyless OIDC signing
+  pull-requests: write  # relctl reads override comments and posts its help comment
 
 jobs:
   # ── Phase 1: Create GitHub release via relctl ────────────────────────────────
+  # Simple flow: every merge to main creates a draft release. The version comes
+  # from the branch prefix of the merged pull request (SemVer, see .relctl.yaml).
+  # The release id is exported only for a draft; the jobs below are skipped when
+  # it is empty, so a release that is already published is never built twice.
   create-release:
     uses: layer87-labs/relctl-action/.github/workflows/create-release.yml@main
+    with:
+      relctl-version: 2.11.0
     secrets:
       token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -24,6 +32,7 @@ jobs:
     name: Build & Sign (${{ matrix.binary }}/${{ matrix.suffix }})
     runs-on: ubuntu-latest
     needs: [create-release]
+    if: needs.create-release.outputs.release-id != ''
     strategy:
       fail-fast: false
       matrix:
@@ -97,6 +106,7 @@ jobs:
     name: Generate Checksums
     runs-on: ubuntu-latest
     needs: [create-release, build]
+    if: needs.create-release.outputs.release-id != ''
     steps:
       - name: Download all build artifacts
         uses: actions/download-artifact@v8
@@ -127,6 +137,7 @@ jobs:
     name: Container Image
     runs-on: ubuntu-latest
     needs: [create-release, build]
+    if: needs.create-release.outputs.release-id != ''
     steps:
       - uses: actions/checkout@v6
 
@@ -209,6 +220,7 @@ jobs:
     name: Publish Helm Chart
     runs-on: ubuntu-latest
     needs: [create-release]
+    if: needs.create-release.outputs.release-id != ''
     steps:
       - uses: actions/checkout@v6
 
@@ -243,6 +255,7 @@ jobs:
     name: Publish Release
     runs-on: ubuntu-latest
     needs: [create-release, build, checksums, container-image, helm-publish]
+    if: needs.create-release.outputs.release-id != ''
     environment: production
     steps:
       - uses: actions/checkout@v6
@@ -261,6 +274,7 @@ jobs:
         uses: layer87-labs/relctl-action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          relctl-version: 2.11.0
 
       - name: Publish release assets
         env:
