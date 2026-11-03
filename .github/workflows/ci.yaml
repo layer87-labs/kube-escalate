@@ -3,6 +3,12 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  # Scan main itself, not only pull requests, so new advisories against
+  # unchanged code are noticed.
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * 1"
 
 permissions:
   contents: read
@@ -12,7 +18,10 @@ jobs:
   # relctl posts its help comment on the pull request, so this job needs
   # pull-requests: write. A reusable workflow cannot exceed the permissions of
   # its caller; granting less makes the run fail at startup.
+  # It only makes sense for pull requests (it reads the PR number); on push to
+  # main and on the schedule it is skipped and the jobs below still run.
   generate-build-infos:
+    if: github.event_name == 'pull_request'
     permissions:
       contents: read
       pull-requests: write
@@ -27,6 +36,7 @@ jobs:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
     needs: [generate-build-infos]
+    if: ${{ !cancelled() && (needs.generate-build-infos.result == 'success' || needs.generate-build-infos.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +65,7 @@ jobs:
     name: Audit
     runs-on: ubuntu-latest
     needs: [generate-build-infos]
+    if: ${{ !cancelled() && (needs.generate-build-infos.result == 'success' || needs.generate-build-infos.result == 'skipped') }}
     steps:
       - uses: actions/checkout@v6
 
@@ -85,6 +96,7 @@ jobs:
     name: Helm Lint
     runs-on: ubuntu-latest
     needs: [generate-build-infos]
+    if: ${{ !cancelled() && (needs.generate-build-infos.result == 'success' || needs.generate-build-infos.result == 'skipped') }}
     steps:
       - uses: actions/checkout@v6
 
