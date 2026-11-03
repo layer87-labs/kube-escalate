@@ -6,13 +6,19 @@ on:
 
 permissions:
   contents: read
-  security-events: write
-  pull-requests: read
 
 jobs:
   # ── Generate build infos — all other jobs depend on this ────────────────────
+  # relctl posts its help comment on the pull request, so this job needs
+  # pull-requests: write. A reusable workflow cannot exceed the permissions of
+  # its caller; granting less makes the run fail at startup.
   generate-build-infos:
+    permissions:
+      contents: read
+      pull-requests: write
     uses: layer87-labs/relctl-action/.github/workflows/generate-build-infos.yml@main
+    with:
+      relctl-version: 2.11.0
     secrets:
       token: ${{ secrets.GITHUB_TOKEN }}
 
