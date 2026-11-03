@@ -101,7 +101,7 @@ func managedRB(name, namespace, requester, role, expiresAt string) *rbacv1.RoleB
 // produced the same object name and the second Create failed with
 // AlreadyExists — reachable from a retry, a script, or two terminals.
 func TestEscalate_ConsecutiveRequests_DoNotCollide(t *testing.T) {
-	cs := fakeCS(t, "eike@layer87.de", []string{"oidc:platform-operator"})
+	cs := fakeCS(t, "alice@example.org", []string{"oidc:platform-operator"})
 	var out bytes.Buffer
 
 	opts := plugin.EscalateOptions{
@@ -125,7 +125,7 @@ func TestEscalate_ConsecutiveRequests_DoNotCollide(t *testing.T) {
 // TestEscalate_LongUsername_ProducesValidName guards the 253-character
 // Kubernetes object name limit for pathological identities.
 func TestEscalate_LongUsername_ProducesValidName(t *testing.T) {
-	longUser := strings.Repeat("a", 300) + "@layer87.de"
+	longUser := strings.Repeat("a", 300) + "@example.org"
 	cs := fakeCS(t, longUser, []string{"oidc:platform-operator"})
 	var out bytes.Buffer
 
@@ -144,7 +144,7 @@ func TestEscalate_LongUsername_ProducesValidName(t *testing.T) {
 }
 
 func TestEscalate_ClusterWide_CreatesCRB(t *testing.T) {
-	cs := fakeCS(t, "eike@layer87.de", []string{"oidc:platform-operator"})
+	cs := fakeCS(t, "alice@example.org", []string{"oidc:platform-operator"})
 	var out bytes.Buffer
 
 	err := plugin.Escalate(context.Background(), plugin.EscalateOptions{
@@ -163,26 +163,26 @@ func TestEscalate_ClusterWide_CreatesCRB(t *testing.T) {
 	crb := crbs.Items[0]
 	assert.Equal(t, "cluster-admin", crb.RoleRef.Name)
 	assert.Equal(t, "ClusterRole", crb.RoleRef.Kind)
-	assert.Equal(t, "eike@layer87.de", crb.Annotations[plugin.AnnotationRequester])
+	assert.Equal(t, "alice@example.org", crb.Annotations[plugin.AnnotationRequester])
 	assert.Equal(t, "CNPG hotfix", crb.Annotations[plugin.AnnotationReason])
 	assert.Equal(t, "oidc:platform-operator", crb.Annotations[plugin.AnnotationOriginalGroups])
 	assert.NotEmpty(t, crb.Annotations[plugin.AnnotationExpiresAt])
 	assert.Equal(t, "true", crb.Labels[plugin.LabelManaged])
 
 	require.Len(t, crb.Subjects, 1)
-	assert.Equal(t, "eike@layer87.de", crb.Subjects[0].Name)
+	assert.Equal(t, "alice@example.org", crb.Subjects[0].Name)
 
 	// expires-at must be approximately now + 1h
 	expiresAt, err := time.Parse(time.RFC3339, crb.Annotations[plugin.AnnotationExpiresAt])
 	require.NoError(t, err)
 	assert.WithinDuration(t, time.Now().Add(time.Hour), expiresAt, 5*time.Second)
 
-	assert.Contains(t, out.String(), "eike@layer87.de")
+	assert.Contains(t, out.String(), "alice@example.org")
 	assert.Contains(t, out.String(), "cluster-admin")
 }
 
 func TestEscalate_NamespaceScoped_CreatesRB(t *testing.T) {
-	cs := fakeCS(t, "eike@layer87.de", nil)
+	cs := fakeCS(t, "alice@example.org", nil)
 	var out bytes.Buffer
 
 	err := plugin.Escalate(context.Background(), plugin.EscalateOptions{
@@ -203,7 +203,7 @@ func TestEscalate_NamespaceScoped_CreatesRB(t *testing.T) {
 	assert.Equal(t, "editor", rb.RoleRef.Name)
 	assert.Equal(t, "Role", rb.RoleRef.Kind)
 	assert.Equal(t, "tenant-acme", rb.Namespace)
-	assert.Equal(t, "eike@layer87.de", rb.Annotations[plugin.AnnotationRequester])
+	assert.Equal(t, "alice@example.org", rb.Annotations[plugin.AnnotationRequester])
 
 	expiresAt, err := time.Parse(time.RFC3339, rb.Annotations[plugin.AnnotationExpiresAt])
 	require.NoError(t, err)
@@ -218,8 +218,8 @@ func TestEscalate_NamespaceScoped_CreatesRB(t *testing.T) {
 func TestStatus_ShowsCurrentUserEscalations(t *testing.T) {
 	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 
-	cs := fakeCS(t, "eike@layer87.de", nil,
-		managedCRB("crb-eike", "eike@layer87.de", "cluster-admin", future),
+	cs := fakeCS(t, "alice@example.org", nil,
+		managedCRB("crb-alice", "alice@example.org", "cluster-admin", future),
 		managedCRB("crb-other", "other@example.com", "view", future),
 	)
 	var out bytes.Buffer
@@ -227,7 +227,7 @@ func TestStatus_ShowsCurrentUserEscalations(t *testing.T) {
 	err := plugin.Status(context.Background(), plugin.StatusOptions{All: false}, cs, &out)
 
 	require.NoError(t, err)
-	assert.Contains(t, out.String(), "eike@layer87.de")
+	assert.Contains(t, out.String(), "alice@example.org")
 	assert.NotContains(t, out.String(), "other@example.com",
 		"foreign escalation must not appear when --all is false")
 }
@@ -235,8 +235,8 @@ func TestStatus_ShowsCurrentUserEscalations(t *testing.T) {
 func TestStatus_All_ShowsEveryUser(t *testing.T) {
 	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 
-	cs := fakeCS(t, "eike@layer87.de", nil,
-		managedCRB("crb-eike", "eike@layer87.de", "cluster-admin", future),
+	cs := fakeCS(t, "alice@example.org", nil,
+		managedCRB("crb-alice", "alice@example.org", "cluster-admin", future),
 		managedCRB("crb-other", "other@example.com", "view", future),
 	)
 	var out bytes.Buffer
@@ -245,15 +245,15 @@ func TestStatus_All_ShowsEveryUser(t *testing.T) {
 	err := plugin.Status(context.Background(), plugin.StatusOptions{All: true}, cs, &out)
 
 	require.NoError(t, err)
-	assert.Contains(t, out.String(), "eike@layer87.de")
+	assert.Contains(t, out.String(), "alice@example.org")
 	assert.Contains(t, out.String(), "other@example.com")
 }
 
 func TestStatus_IncludesRoleBindings(t *testing.T) {
 	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 
-	cs := fakeCS(t, "eike@layer87.de", nil,
-		managedRB("rb-eike", "tenant-acme", "eike@layer87.de", "editor", future),
+	cs := fakeCS(t, "alice@example.org", nil,
+		managedRB("rb-alice", "tenant-acme", "alice@example.org", "editor", future),
 	)
 	var out bytes.Buffer
 
@@ -265,7 +265,7 @@ func TestStatus_IncludesRoleBindings(t *testing.T) {
 }
 
 func TestStatus_Empty_PrintsNoEscalations(t *testing.T) {
-	cs := fakeCS(t, "eike@layer87.de", nil) // empty store
+	cs := fakeCS(t, "alice@example.org", nil) // empty store
 	var out bytes.Buffer
 
 	err := plugin.Status(context.Background(), plugin.StatusOptions{}, cs, &out)
@@ -279,21 +279,21 @@ func TestStatus_Empty_PrintsNoEscalations(t *testing.T) {
 func TestRevoke_DeletesCurrentUserCRB(t *testing.T) {
 	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 
-	crb := managedCRB("crb-eike", "eike@layer87.de", "cluster-admin", future)
+	crb := managedCRB("crb-alice", "alice@example.org", "cluster-admin", future)
 	other := managedCRB("crb-other", "other@example.com", "view", future)
-	cs := fakeCS(t, "eike@layer87.de", nil, crb, other)
+	cs := fakeCS(t, "alice@example.org", nil, crb, other)
 	var out bytes.Buffer
 
 	err := plugin.Revoke(context.Background(), plugin.RevokeOptions{All: false}, cs, &out)
 
 	require.NoError(t, err)
-	assert.Contains(t, out.String(), "crb-eike")
+	assert.Contains(t, out.String(), "crb-alice")
 	assert.NotContains(t, out.String(), "crb-other")
 
-	// eike's CRB must be gone; other must remain.
+	// alice's CRB must be gone; other must remain.
 	_, getErr := cs.RbacV1().ClusterRoleBindings().Get(
-		context.Background(), "crb-eike", metav1.GetOptions{})
-	assert.Error(t, getErr, "crb-eike should have been deleted")
+		context.Background(), "crb-alice", metav1.GetOptions{})
+	assert.Error(t, getErr, "crb-alice should have been deleted")
 
 	_, getErr = cs.RbacV1().ClusterRoleBindings().Get(
 		context.Background(), "crb-other", metav1.GetOptions{})
@@ -303,8 +303,8 @@ func TestRevoke_DeletesCurrentUserCRB(t *testing.T) {
 func TestRevoke_All_DeletesEverything(t *testing.T) {
 	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 
-	cs := fakeCS(t, "eike@layer87.de", nil,
-		managedCRB("crb-eike", "eike@layer87.de", "cluster-admin", future),
+	cs := fakeCS(t, "alice@example.org", nil,
+		managedCRB("crb-alice", "alice@example.org", "cluster-admin", future),
 		managedCRB("crb-other", "other@example.com", "view", future),
 	)
 	var out bytes.Buffer
@@ -312,7 +312,7 @@ func TestRevoke_All_DeletesEverything(t *testing.T) {
 	err := plugin.Revoke(context.Background(), plugin.RevokeOptions{All: true}, cs, &out)
 
 	require.NoError(t, err)
-	assert.Contains(t, out.String(), "crb-eike")
+	assert.Contains(t, out.String(), "crb-alice")
 	assert.Contains(t, out.String(), "crb-other")
 
 	remaining, err := cs.RbacV1().ClusterRoleBindings().List(
@@ -325,22 +325,22 @@ func TestRevoke_All_DeletesEverything(t *testing.T) {
 func TestRevoke_DeletesRoleBinding(t *testing.T) {
 	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 
-	rb := managedRB("rb-eike", "tenant-acme", "eike@layer87.de", "editor", future)
-	cs := fakeCS(t, "eike@layer87.de", nil, rb)
+	rb := managedRB("rb-alice", "tenant-acme", "alice@example.org", "editor", future)
+	cs := fakeCS(t, "alice@example.org", nil, rb)
 	var out bytes.Buffer
 
 	err := plugin.Revoke(context.Background(), plugin.RevokeOptions{All: false}, cs, &out)
 
 	require.NoError(t, err)
-	assert.Contains(t, out.String(), "rb-eike")
+	assert.Contains(t, out.String(), "rb-alice")
 
 	_, getErr := cs.RbacV1().RoleBindings("tenant-acme").Get(
-		context.Background(), "rb-eike", metav1.GetOptions{})
-	assert.Error(t, getErr, "rb-eike should have been deleted")
+		context.Background(), "rb-alice", metav1.GetOptions{})
+	assert.Error(t, getErr, "rb-alice should have been deleted")
 }
 
 func TestRevoke_NothingToRevoke_PrintsMessage(t *testing.T) {
-	cs := fakeCS(t, "eike@layer87.de", nil) // empty store
+	cs := fakeCS(t, "alice@example.org", nil) // empty store
 	var out bytes.Buffer
 
 	err := plugin.Revoke(context.Background(), plugin.RevokeOptions{}, cs, &out)

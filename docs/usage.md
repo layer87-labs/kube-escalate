@@ -91,9 +91,9 @@ kubectl escalate status --all
 Example output:
 
 ```
-REQUESTER               ROLE            SCOPE              EXPIRES AT            REMAINING
-eike@layer87.de         cluster-admin   cluster            2026-05-24T16:00:00Z  55m0s
-eike@layer87.de         editor          ns/tenant-acme     2026-05-24T15:30:00Z  25m0s
+REQUESTER          ROLE            SCOPE           EXPIRES AT            REMAINING
+alice@example.org  cluster-admin   cluster         2026-05-24T16:00:00Z  55m0s
+alice@example.org  editor          ns/tenant-acme  2026-05-24T15:30:00Z  25m0s
 ```
 
 ---
@@ -139,7 +139,7 @@ kubectl escalate revoke
 kubectl escalate \
   --to cluster-admin \
   --duration 2h \
-  --reason "P0: database failover JIRA-4821"
+  --reason "P0: database failover"
 
 # During the incident — see who else has active escalations
 kubectl escalate status --all

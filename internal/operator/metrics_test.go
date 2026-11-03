@@ -42,16 +42,16 @@ const activeMetricHelp = `# HELP kube_escalate_active_escalations Number of curr
 func TestActiveEscalations_CountedFromLiveState(t *testing.T) {
 	future := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
 
-	crb := managedCRB("active-crb", "eike@layer87.de", "cluster-admin", future)
+	crb := managedCRB("active-crb", "alice@example.org", "cluster-admin", future)
 	crb.Finalizers = []string{operator.FinalizerName}
-	rb := managedRB("tenant-acme", "active-rb", "eike@layer87.de", "edit", future)
+	rb := managedRB("tenant-acme", "active-rb", "alice@example.org", "edit", future)
 	rb.Finalizers = []string{operator.FinalizerName}
 
 	reg := collectorFor(t, crb, rb)
 
 	expected := activeMetricHelp +
-		`kube_escalate_active_escalations{namespace="cluster",role="cluster-admin",user="eike@layer87.de"} 1` + "\n" +
-		`kube_escalate_active_escalations{namespace="ns/tenant-acme",role="edit",user="eike@layer87.de"} 1` + "\n"
+		`kube_escalate_active_escalations{namespace="cluster",role="cluster-admin",user="alice@example.org"} 1` + "\n" +
+		`kube_escalate_active_escalations{namespace="ns/tenant-acme",role="edit",user="alice@example.org"} 1` + "\n"
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expected),
 		"kube_escalate_active_escalations"))
@@ -62,15 +62,15 @@ func TestActiveEscalations_CountedFromLiveState(t *testing.T) {
 func TestActiveEscalations_AggregatesPerUserRoleScope(t *testing.T) {
 	future := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
 
-	first := managedCRB("dup-1", "eike@layer87.de", "view", future)
-	second := managedCRB("dup-2", "eike@layer87.de", "view", future)
-	other := managedCRB("other-user", "someone@layer87.de", "view", future)
+	first := managedCRB("dup-1", "alice@example.org", "view", future)
+	second := managedCRB("dup-2", "alice@example.org", "view", future)
+	other := managedCRB("other-user", "bob@example.org", "view", future)
 
 	reg := collectorFor(t, first, second, other)
 
 	expected := activeMetricHelp +
-		`kube_escalate_active_escalations{namespace="cluster",role="view",user="eike@layer87.de"} 2` + "\n" +
-		`kube_escalate_active_escalations{namespace="cluster",role="view",user="someone@layer87.de"} 1` + "\n"
+		`kube_escalate_active_escalations{namespace="cluster",role="view",user="alice@example.org"} 2` + "\n" +
+		`kube_escalate_active_escalations{namespace="cluster",role="view",user="bob@example.org"} 1` + "\n"
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expected),
 		"kube_escalate_active_escalations"))
