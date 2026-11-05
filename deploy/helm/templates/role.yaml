@@ -1,0 +1,32 @@
+{{- if .Values.leaderElection.enabled }}
+# Leader election lease. The lease is created in the operator's own namespace,
+# so a namespaced Role is enough: client-go's Lease lock only uses get, create
+# and update. Nothing cluster-wide is granted for it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kube-escalate.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-escalate.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kube-escalate.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-escalate.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kube-escalate.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kube-escalate.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

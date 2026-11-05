@@ -141,7 +141,7 @@ discussion: [SECURITY.md](SECURITY.md) and the
 | --- | --- | --- |
 | `clusterrolebindings`, `rolebindings` | get, list, watch, update, patch, delete | watch managed bindings, manage the finalizer, delete at expiry. No `create`. |
 | `events` (core and `events.k8s.io`) | create, patch | audit events |
-| `leases` (`coordination.k8s.io`) | get, list, watch, create, update, patch, delete | leader election |
+| `leases` (`coordination.k8s.io`), in the release namespace only (namespaced `Role`, only when `leaderElection.enabled`) | get, create, update | leader election |
 
 The ClusterRole does not name Secrets.
 

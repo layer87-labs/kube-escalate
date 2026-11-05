@@ -26,7 +26,6 @@ rules:
     resources: ["events"]
     verbs: ["create", "patch"]
 
-  # Leader election lease (required when replicaCount > 1).
-  - apiGroups: ["coordination.k8s.io"]
-    resources: ["leases"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # The leader election lease is not granted here: it lives in the release
+  # namespace and is granted by a namespaced Role (see role.yaml), so the
+  # operator holds no lease permissions cluster-wide.
