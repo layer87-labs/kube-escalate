@@ -4,3 +4,6 @@
 # SemVer from the branch prefix of the merged pull request (fix/ -> patch,
 # feat/ -> minor, major/ -> major). Tags are plain versions such as 0.6.2.
 version_scheme: semver
+
+# default becomes major in relctl 3.0.0
+breaking_markers: major
